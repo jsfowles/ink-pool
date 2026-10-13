@@ -1,17 +1,16 @@
 const still = matchMedia("(prefers-reduced-motion: reduce)");
 
-/** How long an ink dot takes to run from one place to the next. */
 export const RUN = 420;
 
-/** Writes text into an element drawn with Ink, both copies, or plainly. */
+/** Writes text into both of an Ink element's copies, or plainly. */
 export const inkText = (el: Element, text: string) => {
   const copies = el.querySelectorAll(".ink-a, .ink-b");
   if (!copies.length) el.textContent = text;
   for (const c of copies) c.textContent = text;
 };
 
-/** Writes new text that comes into focus out of a slight blur. Each copy
- *  animates itself, so both keep blending with the page as they do. */
+/** Swaps in text out of a slight blur. Each copy animates itself, so both
+ *  keep their blend. */
 export const inkSwap = (el: Element, text: string) => {
   const was = (el.querySelector(".ink-a") ?? el).textContent;
   if (was === text) return;
@@ -27,11 +26,9 @@ export const inkSwap = (el: Element, text: string) => {
     });
 };
 
-/** Runs an ink dot over from where it was to where it now is, dx and dy
- *  back. The run is added onto whatever places the dot, so the place can
- *  keep moving under it. Mid-way the dot is drawn out along its path, like
- *  a drop pulled across, and rounds up as it lands. With `move` false it is
- *  only drawn out, for a dot whose caller moves it frame by frame. */
+/** Runs a dot over from dx, dy back, drawn out mid-way like a pulled drop.
+ *  The run adds onto its place, which can keep moving under it. With
+ *  `move` false it only stretches, for a dot moved frame by frame. */
 export const inkRun = (mark: Element, dx: number, dy: number, move = true) => {
   if (still.matches || (!dx && !dy)) return;
   const pull = Math.min(Math.hypot(dx, dy) / 5, 14) * 0.45 + 1;
@@ -57,9 +54,8 @@ export const inkRun = (mark: Element, dx: number, dy: number, move = true) => {
   );
 };
 
-/** Keeps an ink dot by whichever of the buttons is pressed, at the place
- *  `at` gives (relative to the dot's own box), running to the next one
- *  pressed. With none pressed, it fades away. */
+/** Keeps a dot at `at` by the pressed button, running to the next one
+ *  pressed; with none pressed, it fades. */
 export const inkMark = (
   mark: HTMLElement,
   buttons: HTMLElement[],

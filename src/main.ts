@@ -10,19 +10,17 @@ const $ = <T extends HTMLElement>(id: string) =>
 const root = document.documentElement;
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 
-// Left alone, the glass keeps writing: a glyph each morph plus this long.
+// Left alone, a glyph each morph plus this long.
 const PAUSE = 1700;
-// After a key or a click, it waits this long before writing on its own.
+// Quiet this long after a key or a click.
 const IDLE = 9000;
 
 const phases = [...$("phases").querySelectorAll<HTMLElement>("[data-phase]")];
 const holds = [
   ...$("phases").querySelectorAll<HTMLButtonElement>("[data-hold]"),
 ];
-// The dot beside the phase names: it passes each name at that phase's
-// hold point and rests by "settled", so it runs down them with the morph.
-// A beat after settling it runs back up to "start", so the next morph
-// sets off from there.
+// The phase dot runs down the names with the morph, then back up to
+// "start" a beat after it settles.
 const mark = $("phase-mark");
 const stops = [...Object.values(PHASES).map((p) => p.at), 1];
 const BEAT = 600;
@@ -30,16 +28,13 @@ let centres: number[] = [];
 let lastY = 0;
 let parked = false;
 let parking = 0;
-// Each name's last --near, so a frame only restyles the names it changed.
 const near: string[] = [];
 const measureStops = () => {
   centres = phases.map((li) => li.offsetTop + li.offsetHeight / 2);
 };
-// Each name inks in as the dot nears it and fades as it leaves, so the
-// list darkens with the dot rather than a name at a time.
 const moveMark = (y: number) => {
-  // Placed by translate, apart from its transform, so a run's stretch
-  // scales the dot and never its distance down the list.
+  // By translate, apart from transform, so a run's stretch scales the dot
+  // and never its distance down the list.
   mark.style.translate = `0 ${y.toFixed(1)}px`;
   lastY = y;
   const row = centres[1] - centres[0] || 1;
@@ -56,7 +51,6 @@ const showProgress = (t: number) => {
     if (parked) return;
     moveMark(centres.at(-1)!);
     clearTimeout(parking);
-    // Run frame by frame, so the names ink in with the dot as it goes.
     parking = setTimeout(() => {
       if (root.dataset.held) return;
       parked = true;
@@ -84,7 +78,7 @@ const showProgress = (t: number) => {
   const span = stops[i] - stops[from];
   const k = span > 0 ? (t - stops[from]) / span : 1;
   const y = centres[from] + (centres[i] - centres[from]) * k;
-  // A new glyph before the dot was back up: it runs there, not jumps.
+  // A new morph before the dot got back up: it runs, not jumps.
   const back = !parked && y < lastY - 1 && lastY === centres.at(-1);
   const was = lastY;
   parked = false;
@@ -93,8 +87,6 @@ const showProgress = (t: number) => {
 };
 new ResizeObserver(measureStops).observe($("phases"));
 
-// What a phase is, in a line under the list: the hovered one, else the
-// held one.
 const note = $("phase-note");
 const explain = (name?: string) => {
   const b = holds.find((h) => h.dataset.hold === (name ?? root.dataset.held));
@@ -109,8 +101,6 @@ const pool = inkPool($("pool"), undefined, {
   draw,
   onProgress: showProgress,
 });
-// The page tours the presets while it writes on its own, until a hand
-// chooses one or moves a slider.
 let touring = true;
 let tourStep = false;
 const ledger = startLedger((settings, { live, preset }) => {
@@ -119,10 +109,8 @@ const ledger = startLedger((settings, { live, preset }) => {
     touring = false;
     ledger.endTour();
   }
-  // Letting go of a slider, or choosing a preset, writes the next glyph
-  // with the new values, and the writing on its own starts its count again.
-  // A preset also lets go of a hold, so its morph plays through; a slider
-  // keeps it, to tune the frame held.
+  // Letting go of a slider or choosing a preset writes the next glyph. A
+  // preset also lets go of a hold; a slider keeps it, to tune the held frame.
   if (live) return;
   if (preset && root.dataset.held) holdAt(null);
   next();
@@ -130,7 +118,6 @@ const ledger = startLedger((settings, { live, preset }) => {
 }, source);
 pool.set(ledger.settings());
 
-// Where the glass is: which set, and how far through it.
 let set = 0;
 let at = 0;
 const setButtons = [
@@ -138,9 +125,7 @@ const setButtons = [
 ];
 const now = $("now");
 
-// The pool queues glyphs typed faster than a morph, so each finishes; a
-// glyph the page writes itself replaces any waiting, so it never builds a
-// backlog to hurry through.
+// Typed glyphs queue so each finishes; the page's own replace the queue.
 const write = (key: string, announce = false, replace = false) => {
   if (announce) now.textContent = describe(key);
   pool.show(key, { replace });
@@ -150,7 +135,6 @@ const choose = (index: number) => {
   for (const [i, b] of setButtons.entries())
     b.ariaPressed = String(i === index);
 };
-// The set's ink dot, under its name; the preset's, in the gutter beside it.
 inkMark($("sets-mark"), setButtons, (b) => [
   b.offsetLeft + b.offsetWidth / 2 - 2.5,
   b.offsetTop + b.offsetHeight - 5,
@@ -169,7 +153,6 @@ function next() {
   step(1, false, true);
 }
 
-// Writing on its own, paused for a while after each hand on it.
 let quietUntil = 0;
 let written = 0;
 let timer = 0;
@@ -194,8 +177,6 @@ const keepWriting = () => {
 };
 $("auto").addEventListener("change", keepWriting);
 
-// A phase holds the morph there, glyph after glyph; rest, or the held
-// phase again, lets it go.
 const holdAt = (name: string | null) => {
   const held = name && name !== "settled" ? name : "";
   root.dataset.held = held;
@@ -219,8 +200,6 @@ $("ink").addEventListener("click", () => {
   stopDemo();
   step(1, true);
 });
-// Choosing a set is browsing it: it writes the set's first glyph and
-// carries on writing through the set from there.
 for (const [i, b] of setButtons.entries())
   b.addEventListener("click", () => {
     stopDemo();
@@ -231,8 +210,6 @@ for (const [i, b] of setButtons.entries())
     keepWriting();
   });
 
-// The writing line: whatever is typed into it pools in, key by key, and
-// Enter writes it whole. A key pressed anywhere else lands in it.
 const form = $<HTMLFormElement>("write");
 const field = $<HTMLInputElement>("write-text");
 let typed = "";
@@ -290,8 +267,8 @@ document.addEventListener("keydown", (e) => {
   if (e.key.length === 1 && e.key !== " ") field.focus({ preventScroll: true });
 });
 
-// The first visit, once: the line types a word by itself, a key at a time,
-// then writes it whole, so it's plain that typing is how you play.
+// First visit only: the line types a word by itself, to show that typing
+// is how you play.
 const SEEN = "ink-pool:wrote";
 let demo: number[] = [];
 const seen = () => {
@@ -304,9 +281,7 @@ const seen = () => {
 const remember = () => {
   try {
     localStorage.setItem(SEEN, "1");
-  } catch {
-    // Without storage it simply plays again next visit.
-  }
+  } catch {}
 };
 function stopDemo() {
   if (!demo.length) return;
@@ -343,8 +318,6 @@ const playDemo = () => {
   });
 };
 
-// The glass, light or dark: remembered here, else the system's, and the
-// pool re-inked to match.
 const THEME = "ink-pool:theme";
 const themeButton = $<HTMLButtonElement>("theme");
 const themeColor = document.querySelector('meta[name="theme-color"]');
@@ -365,16 +338,12 @@ const chosen = () => {
     return null;
   }
 };
-// The switch: the old glass blurs away into mist as the new one comes
-// into focus out of it (styles/theme.scss). Without View Transitions, or
-// with reduced motion, it simply changes.
+// Without View Transitions, or with reduced motion, it simply changes.
 const setTheme = (next: string) => {
   root.dataset.theme = next;
   try {
     localStorage.setItem(THEME, next);
-  } catch {
-    // Without storage the choice lasts this visit.
-  }
+  } catch {}
   showTheme();
 };
 themeButton.addEventListener("click", () => {
@@ -396,8 +365,7 @@ reduced.addEventListener("change", () => {
 
 paintFog([...document.querySelectorAll<HTMLElement>(".fog")]);
 
-// Wait for the font (max 1.5s) so the first letters are measured right,
-// then write the first digit out of the empty glass.
+// Wait for the font (at most 1.5s) so the first glyph is drawn in it.
 void Promise.race([
   document.fonts.load('700 1em "Poppins"'),
   new Promise((resolve) => setTimeout(resolve, 1500)),

@@ -1,6 +1,4 @@
-// The theme switch, as fog: the old glass blurs out into mist while the new
-// one comes into focus from it. Both pictures are the browser's snapshots,
-// so the blur runs on the GPU.
+// The theme switch: the old glass blurs out as the new one focuses in.
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 450ms;

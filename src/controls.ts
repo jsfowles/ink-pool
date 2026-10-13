@@ -25,7 +25,6 @@ const range = (
   off?: number,
 ): Control => ({ key, label, min, max, step, unit, off });
 
-// The ledger's settings, in page order.
 export const GROUPS: Group[] = [
   {
     id: "morph",

@@ -1,9 +1,6 @@
 ---
-// Text that reads over the ink: a white copy blended by difference (dark on
-// the fog, light over a glyph) under a toned copy blended by --lift
-// (lighten on a light glass, darken on a dark one), which takes it to its
-// grey on the fog and can't dim it over a glyph. The tone is --tone on any
-// ancestor; --tone-full leaves the text at full strength.
+// A white copy blended by difference over a toned one blended by --lift:
+// dark on the fog, light over a glyph, greyed by --tone.
 type Props = { text?: string };
 
 const { text = "" } = Astro.props;

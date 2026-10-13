@@ -1,5 +1,3 @@
-// The ledger: holds the settings and reports each change. It opens from
-// the header's Settings.
 import { CONTROLS, print } from "./controls";
 import { DEFAULTS, type Settings } from "./pool";
 import { inkSwap, inkText } from "./ink";
@@ -117,8 +115,7 @@ export const startLedger = (onChange: Change, source: string) => {
       .reset as Key | undefined;
     if (key) update({ ...settings, [key]: base[key] });
   });
-  // The note under the presets: what the pointed-at preset does, else,
-  // while the page tours them on its own, what the current one does.
+  // The note: the pointed-at preset's, else the toured one's.
   let touring = false;
   const note = $("preset-note");
   const rest = () => inkSwap(note, touring ? PRESETS[baseName].note : "");
@@ -132,7 +129,6 @@ export const startLedger = (onChange: Change, source: string) => {
       touring = false;
       choose(b.dataset.preset!);
     });
-    // Pointing at a preset says what it does.
     for (const type of ["pointerenter", "focus"])
       b.addEventListener(type, () => inkSwap(note, b.dataset.note!));
     for (const type of ["pointerleave", "blur"]) b.addEventListener(type, rest);
@@ -150,7 +146,6 @@ export const startLedger = (onChange: Change, source: string) => {
     document.documentElement.dataset.ledger = "open";
     ledger.inert = false;
     for (const b of openers) if (b.ariaExpanded) b.ariaExpanded = "true";
-    // Focus goes to the sheet's title, or the setting it was opened at.
     const target = focus
       ? (form.elements.namedItem(focus) as HTMLInputElement)
       : $("ledger-title");
@@ -181,15 +176,14 @@ export const startLedger = (onChange: Change, source: string) => {
   return {
     settings: () => settings,
     refresh: () => update(settings),
-    /** Chooses the preset after the current one, for the page's own tour,
-     *  and says what it does. */
+    /** The next preset, for the page's own tour. */
     tour: () => {
       const names = Object.keys(PRESETS);
       touring = true;
       choose(names[(names.indexOf(baseName) + 1) % names.length]);
       rest();
     },
-    /** Ends the tour: the note goes, the chosen preset stays. */
+    /** Ends the tour, keeping the chosen preset. */
     endTour: () => {
       touring = false;
       rest();

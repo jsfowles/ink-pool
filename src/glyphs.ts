@@ -1,4 +1,3 @@
-// The glyph sets the playground morphs between, and how each kind is drawn.
 // A glyph's key names it: "text:A", "word:INK", "shape:ring".
 import type { Draw } from "./pool";
 
@@ -9,7 +8,7 @@ const SHAPES: Record<string, string> = {
   triangle: "M0 -70L66 52L-66 52Z",
   square: "M-54 -54H54V54H-54Z",
   cross: "M-14 -70h28v56h56v28h-56v56h-28v-56h-56v-28h56z",
-  // A disc with a smaller one cut from its upper right, centred on its box.
+  // A disc with a smaller one cut from it.
   crescent: "M13.4 -67.6A68 68 0 1 0 62.4 37.5A58 58 0 0 1 13.4 -67.6Z",
   bars: "M-66 -60h30v120h-30zM-15 -60h30v120h-30zM36 -60h30v120h-30z",
 };
@@ -69,9 +68,7 @@ export const draw: Draw = (ctx, key, { width, height, size, font }) => {
   ctx.font = font;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  // As large as the size allows and no wider than the stage: a wide letter
-  // (M, W) or a word fits itself to the width. A word runs a little smaller,
-  // with a touch of tracking.
+  // Wide letters and words fit the stage's width; words run smaller, tracked.
   const word = kind === "word";
   const fit = (px: number) => {
     ctx.font = font.replace(`${size}px`, `${px}px`);

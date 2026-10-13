@@ -1,19 +1,16 @@
 @use "mixins" as *;
 
 :root {
-  // The glass: lit fog, brightest at the centre.
   --fog-hi: #f8f7f3;
   --fog: #e7e6e0;
   --fog-lo: #cfcec7;
   --sheet: #efeee9;
-  // Ink is the only mass.
   --ink: #0f0f0f;
   --text: #1b1c1b;
   --text-muted: #5b5c56;
   --text-faint: #8f8f88;
   --hairline: rgb(27 28 27 / 0.16);
-  // Ink text's grey copy: lightens on a light glass (darkens on a dark
-  // one), and this tone leaves it at full strength.
+  // Ink text's grey copy blends by --lift; --tone-full is full strength.
   --lift: lighten;
   --tone-full: #000;
   --fog-opacity: 0.85;
@@ -23,22 +20,19 @@
   --text-ui: 0.8125rem;
   --text-small: 0.75rem;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  // The settings sheet, and all that moves aside for it: in at its own
-  // pace, out quicker. With reduced motion, everything simply moves.
+  // The settings sheet, and what moves aside for it.
   --duration-sheet-in: 420ms;
   --duration-sheet-out: 320ms;
-  // The glyph's size: as large as the glass allows.
   --glyph: min(62vh, 54vw);
   --edge: 56px;
-  // The edge, kept clear of a notch when a phone lies on its side.
+  // Clear of a notch on a phone on its side.
   --edge-left: max(var(--edge), env(safe-area-inset-left));
   --edge-right: max(var(--edge), env(safe-area-inset-right));
   --ledger-w: 360px;
   color-scheme: light;
   scrollbar-color: var(--text-faint) transparent;
 
-  // The lists upright: how high above the foot of the screen they stand,
-  // and a row's height.
+  // The lists' band upright: its height above the foot, and a row.
   --row: 35px;
   --band-foot: 84px;
 
@@ -60,7 +54,6 @@
   }
 }
 
-// The dark glass: a dim chamber of mist, the ink pale.
 :root[data-theme="dark"] {
   --fog-hi: #2c2d2b;
   --fog: #1c1d1c;

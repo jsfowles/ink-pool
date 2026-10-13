@@ -4,38 +4,32 @@
   }
 }
 
-// Tall screens, phones and tablets held upright: the glyph above, the
-// controls in a band within the thumb's reach, settings as a bottom sheet.
+// Upright: controls in a band at the foot, settings as a bottom sheet.
 @mixin portrait {
   @media (max-width: 599px), (max-width: 1100px) and (orientation: portrait) {
     @content;
   }
 }
 
-// An upright tablet: the portrait band, read from further away.
 @mixin tablet {
   @media (min-width: 700px) and (max-width: 1100px) and (orientation: portrait) {
     @content;
   }
 }
 
-// Everything else: rails down the edges, settings as a side sheet.
 @mixin side {
   @media (min-width: 600px) and (orientation: landscape), (min-width: 1101px) {
     @content;
   }
 }
 
-// A side screen with little height: a phone on its side. The edges close
-// in, and the glyph sits below the header.
+// A phone on its side.
 @mixin short {
   @media (min-width: 600px) and (orientation: landscape) and (max-height: 500px) {
     @content;
   }
 }
 
-// The page's ink dot: white, inverted by difference, so it reads dark on
-// the fog and light over a glyph.
 @mixin dot($size: 5px) {
   width: $size;
   height: $size;

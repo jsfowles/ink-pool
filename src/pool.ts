@@ -1,22 +1,11 @@
 /*
- * Ink pool: a glyph that melts into the next one.
- *
- * Both glyphs blur out together until their ink runs into one pool, an
- * alpha threshold keeping that pool's edge hard, then the new glyph firms
- * up out of it as the old one sinks away.
- *
- * One file, no dependencies. It draws with WebGL2 into a canvas that fills
- * the element you give it: the glyph centred, at the element's font-size,
- * in its color. Every length here is a share of that size (em), so leave
- * the element room around the glyph for the ink to spread and sink into.
- * Glyphs that change faster than a morph wait their turn, and a backlog
- * plays quicker so it keeps up.
+ * Ink pool: a glyph that melts into the next one. Both blur until their ink
+ * runs into one pool, a threshold keeps its edge hard, and the new glyph
+ * firms up out of it. WebGL2, no dependencies; see the README.
  *
  *   const pool = inkPool(el, DEFAULTS);
  *   pool.show("A");
- *   pool.show("B");      // A pools into B
- *   pool.hold("pooled"); // glides to the pool's height and stays there
- *   pool.hold(null);     // and lets it finish
+ *   pool.show("B"); // A pools into B
  */
 
 export type Settings = {
@@ -111,20 +100,18 @@ const phaseAt = (t: number): Phase =>
     (p) => t < PHASES[p].until,
   ) ?? "forming";
 
-// The shaders. One triangle covers the target; `uv` runs 0–1 across it.
+// One triangle covers the target; `uv` runs 0–1 across it.
 const VERT = `#version 300 es
 in vec2 p; out vec2 uv;
 void main() { uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`;
 const HEAD = `#version 300 es
 precision highp float; in vec2 uv; out vec4 o;`;
-// The two glyphs laid together, each at its own opacity and offset.
 const MIX = `${HEAD}
 uniform sampler2D a, b; uniform vec2 ao, bo; uniform float am, bm;
 void main() {
   float x = texture(a, uv + ao).r * am, y = texture(b, uv + bo).r * bm;
   o = vec4(1.0 - (1.0 - x) * (1.0 - y));
 }`;
-// One direction of the spread: a Gaussian over the field.
 const BLUR = `${HEAD}
 uniform sampler2D f; uniform vec2 scale, edge, dir; uniform float sigma;
 float at(vec2 c) { return texture(f, clamp(c, vec2(0.0), edge)).r; }
@@ -140,7 +127,7 @@ void main() {
   }
   o = vec4(sum / total);
 }`;
-// The cut: the pool's edge, hard but never aliased, faded and inked.
+// The pool's edge: hard but never aliased.
 const CUT = `${HEAD}
 uniform sampler2D f; uniform vec2 scale, edge; uniform vec3 ink;
 uniform float hardness, threshold, opacity, fadeStart, fadeEnd;
@@ -171,8 +158,6 @@ export const inkPool = (
     root.style.position = "relative";
   root.append(canvas);
 
-  // What's on show: the glyph settled there, or the morph under way, and
-  // the glyphs waiting for it.
   let shown = "";
   let before = "";
   let started = false;
@@ -183,13 +168,11 @@ export const inkPool = (
   let phase: Phase = "settled";
   let breath: Animation | undefined;
 
-  // The stage, measured: CSS px, device px, and the glyph's size and ink.
   let dpr = 1;
   let W = 1;
   let H = 1;
   let stage: Stage = { width: 1, height: 1, size: 1, font: "" };
   let ink = [0, 0, 0];
-  // The element's color, which the glyph is inked in.
   const readInk = (cs = getComputedStyle(root)) => {
     const rgb = cs.color.match(/[\d.]+/g)?.map(Number) ?? [0, 0, 0];
     ink = rgb.slice(0, 3).map((c) => c / 255);
@@ -219,16 +202,13 @@ export const inkPool = (
     onPhase?.(next);
   };
 
-  // WebGL2, or a plain 2D canvas that only ever shows the glyph at rest.
+  // Without WebGL2, a 2D canvas shows each glyph at rest.
   const gl = canvas.getContext("webgl2", {
     premultipliedAlpha: true,
     antialias: false,
   });
   const flat = gl ? null : canvas.getContext("2d");
 
-  // GL: three programs, one triangle, two fields at the stage's size (the
-  // spread runs in a corner of them, as small as its blur allows), and the
-  // glyphs drawn so far.
   let mix: Program;
   let blur: Program;
   let cut: Program;
@@ -348,7 +328,6 @@ export const inkPool = (
     forget();
   };
 
-  // A glyph, drawn once at the stage's size and kept while it's in use.
   const scratch = document.createElement("canvas");
   const glyph = (key: string) => {
     const g = gl!;
@@ -382,7 +361,6 @@ export const inkPool = (
     return t;
   };
 
-  // The frame at the morph's t, or the glyph at rest.
   const render = () => {
     const m = morph;
     const t = m ? m.t : 1;
@@ -407,8 +385,7 @@ export const inkPool = (
     const h = Math.ceil(H / d);
     const fade = settings.fadeStart < 100;
 
-    // The two glyphs, laid together: the old drawn lower (sampled higher),
-    // the new higher.
+    // The old glyph sinks, the new one rises.
     const mixed = m ? smooth(0.28, 0.72, t) : 1;
     const sink = m ? (smooth(0, 1, t) * settings.sink * px) / 100 / H : 0;
     const rise = m ? ((1 - out(t)) * settings.rise * px) / 100 / H : 0;
@@ -427,7 +404,6 @@ export const inkPool = (
     g.uniform1f(mix.u.bm, mixed);
     g.drawArrays(g.TRIANGLES, 0, 3);
 
-    // The spread, across then down.
     const scale = [w / W, h / H] as const;
     const edge = [(w - 0.5) / W, (h - 0.5) / H] as const;
     const low = sigma / d;
@@ -448,7 +424,6 @@ export const inkPool = (
       }
     }
 
-    // The cut, onto the canvas.
     g.bindFramebuffer(g.FRAMEBUFFER, null);
     g.viewport(0, 0, W, H);
     g.useProgram(cut.p);
@@ -467,8 +442,6 @@ export const inkPool = (
     g.drawArrays(g.TRIANGLES, 0, 3);
   };
 
-  // Time: one frame loop moving the morph's t to `goal` over `span` ms,
-  // then stopping there (held) or settling (at 1).
   let goal = 1;
   let from = 0;
   let t0 = 0;
@@ -498,8 +471,7 @@ export const inkPool = (
   const glideMs = (to: number) =>
     Math.max(180, Math.abs(to - (morph?.t ?? 0)) * settings.duration);
 
-  // Starts a morph to `key` from whatever is on show; quicker with a
-  // backlog, down to a third of the duration.
+  // Quicker with a backlog, down to a third of the duration.
   const begin = (key: string) => {
     const pace = Math.max(0.35, 1 / (1 + waiting.length * 0.6));
     before = shown;
@@ -509,7 +481,6 @@ export const inkPool = (
     else moveTo(1, morph.duration);
   };
 
-  // A morph done: the next glyph waiting goes in.
   const settle = () => {
     morph = null;
     render();
@@ -517,9 +488,8 @@ export const inkPool = (
     if (next !== undefined) begin(next);
   };
 
-  /** Shows a glyph: at once if nothing's under way, else after the morph.
-   *  `replace` drops whatever was waiting, so it's next and runs at the
-   *  full duration; by default it joins the queue. */
+  /** Shows a glyph now, or after the morph under way. `replace` drops any
+   *  waiting, so it's next. */
   const show = (key: string, { replace = false } = {}) => {
     // The first glyph is simply there; with reduced motion, every one is.
     if (!started || (still.matches && held === null)) {
@@ -531,7 +501,6 @@ export const inkPool = (
       if (!frame) render();
       return;
     }
-    // Held, a glyph goes straight in, to the held point.
     if (held !== null) {
       waiting.length = 0;
       if (key !== shown) begin(key);
@@ -549,9 +518,8 @@ export const inkPool = (
     begin(key);
   };
 
-  /** Freezes the morph at a phase or a point (0–1), gliding there, or lets
-   *  it go with null or "settled". Held at rest, it holds the last morph
-   *  again; each glyph shown while held morphs to the same point. */
+  /** Freezes the morph at a phase or a point (0–1), gliding there; null or
+   *  "settled" lets it go. Glyphs shown while held morph to the same point. */
   const hold = (at: Phase | number | null) => {
     const t =
       at === null || at === "settled"
@@ -572,9 +540,8 @@ export const inkPool = (
     moveTo(t, glideMs(t));
   };
 
-  // The breath: down to 0.4 and back, easing into and out of each end, as
-  // a CSS animation's keyframes would. A new pace keeps its place in the
-  // breath; stopping, it eases back up from wherever it was.
+  // Eased into and out of each end, as CSS keyframes would. A new pace keeps
+  // its place; stopping eases back up.
   const breathe = () => {
     const ms = settings.breathe * 1000;
     const on = ms > 0 && !still.matches;
@@ -607,8 +574,6 @@ export const inkPool = (
     });
   };
 
-  // Applies the settings: what's cheap to change on the canvas itself
-  // (rest blur, breath) only when it changed; the rest on the next frame.
   const dress = (prev: Settings | null) => {
     if (prev) readInk();
     const changed = (k: keyof Settings) => !prev || prev[k] !== settings[k];
@@ -650,9 +615,7 @@ export const inkPool = (
   return {
     show,
     hold,
-    /** Changes the settings, for a morph under way too, all but its
-     *  duration, and picks up the element's color again (after a theme
-     *  change, say). */
+    /** Changes the settings, mid-morph too, and re-reads the element's color. */
     set: (next: Settings) => {
       const prev = settings;
       settings = { ...next };

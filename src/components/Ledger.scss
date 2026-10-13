@@ -1,7 +1,5 @@
 @use "../styles/mixins" as *;
 
-// The ledger: a plain sheet of the same fog, sliding in from the right
-// edge (from the foot on a phone), all hairlines.
 .ledger {
   position: fixed;
   top: 0;
@@ -29,7 +27,6 @@
     transition: translate var(--duration-sheet-in) var(--ease-out);
   }
 
-  // On its side, a phone's notch may sit by the sheet's edge.
   @include side {
     padding-right: max(40px, env(safe-area-inset-right));
   }
@@ -44,7 +41,6 @@
     translate: 0 100%;
   }
 
-  // With reduced motion it fades in place rather than sliding.
   @media (prefers-reduced-motion: reduce) {
     translate: none;
     opacity: 0;
@@ -129,7 +125,6 @@
   }
 }
 
-// A changed value: what it was, which puts it back.
 .was {
   color: var(--text-faint);
   font-size: var(--text-small);
@@ -165,7 +160,6 @@
   }
 }
 
-// The copies, as plain words; the file, the one you came for, in full.
 .copies {
   display: flex;
   justify-content: space-between;

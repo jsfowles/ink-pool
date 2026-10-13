@@ -1,6 +1,5 @@
 @use "mixins" as *;
 
-// The glass: lit fog over the whole page, drifting.
 .glass {
   position: fixed;
   inset: 0;
@@ -40,20 +39,15 @@
   }
 }
 
-// The glyph, the whole glass a button that writes the next one.
 .stage {
   position: fixed;
   inset: 0;
   display: grid;
   place-items: center;
-  // The glyph's box is taller than its room upright (it holds the ink's
-  // spread too): centred on the room, it overflows both ways evenly.
+  // Taller than its room upright; centred, it overflows both ways evenly.
   place-content: center;
   padding-bottom: 8vh;
 
-  // Upright: the glyph takes the whole room between the header and the
-  // writing line; the lists lie over its foot, their Ink text inverting
-  // where it crosses ink.
   @include portrait {
     container-type: size;
     padding: calc(var(--edge) + 72px + env(safe-area-inset-top)) 0
@@ -76,14 +70,11 @@
     translate var(--duration-sheet-out) var(--ease-out),
     scale var(--duration-sheet-out) var(--ease-out);
 
-  // Upright, as large as the room's width allows (a letter is about 0.62
-  // of its size wide), never so tall it meets the header; one too wide
-  // fits itself to the width.
+  // A letter is about 0.62em wide.
   @include portrait {
     --glyph: min(118cqw, 72cqh);
   }
 
-  // Focused from the keyboard: a small ink dot under the glyph, not a box.
   &:focus-visible {
     outline: none;
 
@@ -100,8 +91,6 @@
     }
   }
 
-  // With the settings open it steps aside, beside the side sheet or above
-  // the bottom one, so it stays in view while you tune.
   [data-ledger="open"] & {
     transition-duration: var(--duration-sheet-in);
 
@@ -115,7 +104,6 @@
       scale: 0.45;
     }
 
-    // An upright tablet's glyph is larger still: a little smaller here.
     @include tablet {
       translate: 0 -25dvh;
       scale: 0.4;
@@ -123,17 +111,13 @@
   }
 }
 
-// The pool's stage: its canvas fills it, the glyph drawn at its
-// font-size with room around for the ink to spread and sink.
 .pool {
   position: relative;
   width: 100%;
   height: 100%;
 }
 
-// Ink text (components/Ink.astro): dark on the fog, light over a glyph, and
-// a muted label keeps its grey on the fog. --tone is its grey; --tone-full
-// is full strength.
+// Ink text (Ink.astro): dark on the fog, light over the glyph.
 .ink-text {
   display: inline-grid;
 
@@ -153,9 +137,8 @@
   transition: color 150ms var(--ease-out);
 }
 
-// The edges sit straight on the page, after the glyph and with nothing
-// boxing them in (no z-index, transform or opacity), so their Ink text
-// blends with the glyph under it.
+// No z-index, transform or opacity on the edges: any would cut their Ink
+// text's blend with the glyph.
 .top {
   position: absolute;
   top: calc(40px + env(safe-area-inset-top));
@@ -165,7 +148,6 @@
   align-items: start;
   justify-content: space-between;
 
-  // A phone's header: the name and links on one line, the sets below.
   @include phone {
     top: calc(20px + env(safe-area-inset-top));
     display: grid;
@@ -201,8 +183,6 @@
   font-weight: 500;
 }
 
-// The name's i is dotted with the page's ink dot, the same mark that
-// stands by the chosen set, preset and phase.
 .name-mark {
   display: inline-flex;
 }
@@ -220,7 +200,6 @@
   }
 }
 
-// The glyph sets, at the name's size under it.
 .sets {
   position: relative;
   display: flex;
@@ -253,7 +232,6 @@
     gap: 22px;
   }
 
-  // Open, Settings is marked like a chosen set: the ink dot under it.
   [aria-expanded="true"] {
     --tone: var(--tone-full);
 
@@ -268,9 +246,7 @@
   }
 }
 
-// Every list's buttons: pointed at, a hollow ring where its dot would sit,
-// inverting like the dots; under the sets and links, beside the presets
-// and phases.
+// The hover ring, where a list's dot would sit.
 .sets button,
 .top-nav :is(a, button),
 .presets button,
@@ -331,8 +307,6 @@
   }
 }
 
-// The chosen set's and preset's dots, which run to the next one chosen
-// like a drop (ink.ts), and the phase dot, which runs with the morph.
 .sets-mark,
 .preset-mark,
 .phase-mark {
@@ -346,7 +320,6 @@
 .preset-mark {
   left: 0;
 
-  // Until the page has placed it, it isn't anywhere.
   .js:not(.ready) & {
     visibility: hidden;
   }
@@ -357,9 +330,7 @@
   margin-top: -2.5px;
 }
 
-// A list down an edge, centred on it; its note hangs below. The edge's
-// whole height is the list's, to centre it, but only the list takes
-// clicks, so the header above stays in reach.
+// Full height to centre the list; only the list itself takes clicks.
 .presets,
 .phases {
   position: absolute;
@@ -369,8 +340,6 @@
   align-items: center;
   pointer-events: none;
 
-  // Upright: lists in the thumb's reach, above the writing line, the
-  // presets bottom left and the phases mirroring them on the right.
   @include portrait {
     top: auto;
     display: block;
@@ -382,7 +351,7 @@
   pointer-events: auto;
 }
 
-// A list's name, shown only upright, where there's no hover to explain it.
+// Shown only upright, where there's no hover to explain the list.
 .rail-label {
   display: none;
   padding-bottom: 6px;
@@ -400,7 +369,6 @@
   }
 }
 
-// Under a list: what the pointed-at preset or phase does.
 .preset-note,
 .phase-note {
   position: absolute;
@@ -415,7 +383,6 @@
   }
 }
 
-// The presets, down the left edge.
 .presets {
   left: var(--edge-left);
 
@@ -442,12 +409,10 @@
   left: 0;
 }
 
-// The morph's phases, down the right edge, inked in as the morph passes
-// through them. Each holds the morph there.
 .phases {
   right: var(--edge-right);
 
-  // A row shorter than the presets, so a row higher, to start level.
+  // A row higher, to start level with the presets.
   @include portrait {
     bottom: calc(var(--band-foot) + var(--row) + env(safe-area-inset-bottom));
   }
@@ -470,9 +435,7 @@
     --tone: var(--tone-full);
   }
 
-  // With the settings open beside the glass, the list moves over with the
-  // glyph to stand by the sheet's edge. It moves by its place, not by a
-  // transform, which would cut its Ink text's blend from the glass.
+  // Moved by `right`, not a transform, which would cut its blend.
   @include side {
     transition: right var(--duration-sheet-out) var(--ease-out);
   }
@@ -490,7 +453,6 @@
   text-align: right;
 }
 
-// Upright, each row a thumb's height.
 .presets button,
 .phases button {
   @include portrait {
@@ -501,9 +463,7 @@
   }
 }
 
-// The writing line, under the glyph: type into it and each key pools in.
-// It is one field, so it blends whole: white, by difference, its greys the
-// white at lower opacity.
+// One field, so it blends whole: white by difference, greys as lower opacity.
 .foot {
   position: fixed;
   left: var(--edge-left);
@@ -524,7 +484,6 @@
     bottom: calc(20px + env(safe-area-inset-bottom));
   }
 
-  // It recentres beside the side sheet, with the glyph.
   @include side {
     transition: right var(--duration-sheet-out) var(--ease-out);
   }
@@ -537,8 +496,7 @@
   }
 }
 
-// Upright, the bottom sheet covers the lists and the writing line: once it
-// has, they step away, out of the keyboard's reach too.
+// Upright, the sheet covers these: hidden once it lands, out of the tab order.
 [data-ledger="open"] :is(.presets, .phases, .foot) {
   @include portrait {
     visibility: hidden;
@@ -583,7 +541,6 @@
   }
 }
 
-// Once a word is in the line, how to write it whole.
 .write-enter {
   position: absolute;
   top: 100%;
@@ -601,9 +558,7 @@
   }
 }
 
-// A phone on its side: the header tightens, the glyph takes the room
-// below it, and the lists stand between the header and the writing line
-// with closer rows and no notes.
+// A phone on its side.
 @include short {
   .top {
     top: 16px;
@@ -641,11 +596,8 @@
   }
 }
 
-// The edges come up once the glass has drawn: each piece of Ink text and
-// each dot comes into focus out of a slight blur, the header first, then
-// the lists, then the writing line. They fade themselves, never a box
-// around them: a box part-way faded would cut their blend from the glass
-// (and flash them white).
+// Each Ink span and dot fades itself: fading a box around them would cut
+// their blend and flash them white.
 $entering: ":is(.top, .presets, .phases) :is(.ink-a, .ink-b, .sets-mark, .preset-mark, .phase-mark)";
 
 .js:not(.ready) {

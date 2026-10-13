@@ -1,5 +1,4 @@
-// The glass's fog: soft value noise drawn once into a small canvas and
-// stretched over the page, where it drifts on transform alone.
+// Fog: value noise drawn once into a small canvas, stretched over the page.
 
 const hash = (x: number, y: number) => {
   const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
@@ -42,7 +41,6 @@ export const paintFog = (layers: HTMLElement[]) => {
         freq *= 2;
       }
       const i = (y * w + x) * 4;
-      // Light where the noise is high, a cool grey shadow where it's low.
       const light = n > 0.5;
       img.data[i] = img.data[i + 1] = light ? 255 : 150;
       img.data[i + 2] = light ? 252 : 146;
