@@ -572,6 +572,41 @@ export const inkPool = (
     moveTo(t, glideMs(t));
   };
 
+  // The breath: down to 0.4 and back, easing into and out of each end, as
+  // a CSS animation's keyframes would. A new pace keeps its place in the
+  // breath; stopping, it eases back up from wherever it was.
+  const breathe = () => {
+    const ms = settings.breathe * 1000;
+    const on = ms > 0 && !still.matches;
+    const timing = breath?.effect?.getComputedTiming();
+    if (on && breath && timing) {
+      const at = (timing.progress ?? 0) + (timing.currentIteration ?? 0);
+      breath.effect!.updateTiming({ duration: ms });
+      breath.currentTime = at * ms;
+      return;
+    }
+    if (on) {
+      const ease = "cubic-bezier(0.37, 0, 0.63, 1)";
+      breath = canvas.animate(
+        [
+          { opacity: 1, easing: ease },
+          { opacity: 0.4, easing: ease },
+          { opacity: 1 },
+        ],
+        { duration: ms, iterations: Infinity },
+      );
+      return;
+    }
+    if (!breath) return;
+    const was = getComputedStyle(canvas).opacity;
+    breath.cancel();
+    breath = undefined;
+    canvas.animate([{ opacity: was }, { opacity: 1 }], {
+      duration: 400,
+      easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+    });
+  };
+
   // Applies the settings: what's cheap to change on the canvas itself
   // (rest blur, breath) only when it changed; the rest on the next frame.
   const dress = (prev: Settings | null) => {
@@ -581,17 +616,7 @@ export const inkPool = (
       const soft = settings.rest * stage.size;
       canvas.style.filter = soft > 0 ? `blur(${soft.toFixed(2)}px)` : "";
     }
-    if (changed("breathe")) {
-      breath?.cancel();
-      breath =
-        settings.breathe > 0 && !still.matches
-          ? canvas.animate([{ opacity: 1 }, { opacity: 0.4 }, { opacity: 1 }], {
-              duration: settings.breathe * 1000,
-              iterations: Infinity,
-              easing: "ease-in-out",
-            })
-          : undefined;
-    }
+    if (changed("breathe") || (breath && still.matches)) breathe();
     if (!frame) render();
   };
 
