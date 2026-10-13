@@ -25,11 +25,6 @@ export type GlyphSet = { id: string; label: string; keys: string[] };
 
 export const SETS: GlyphSet[] = [
   {
-    id: "type",
-    label: "Type",
-    keys: [..."0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"].map((c) => `text:${c}`),
-  },
-  {
     id: "words",
     label: "Words",
     keys: [
@@ -68,6 +63,11 @@ export const SETS: GlyphSet[] = [
       "A SHAPE IS A POOL THAT HELD",
       "Read slowly. By the time you reach the end, the beginning has already gone back to ink.",
     ].map((k) => `line:${k}`),
+  },
+  {
+    id: "type",
+    label: "Type",
+    keys: [..."0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"].map((c) => `text:${c}`),
   },
   {
     id: "shapes",
