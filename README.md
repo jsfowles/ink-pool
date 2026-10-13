@@ -84,7 +84,9 @@ const draw: Draw = (ctx, key, { width, height, size, font }) => {
 };
 ```
 
-The playground's [`src/glyphs.ts`](src/glyphs.ts) draws words and SVG shapes this way.
+If you draw a glyph smaller than `size` (a sentence wrapped into lines, say), return that share of the size from `draw`. The spread, sink, rise and resting blur scale with it, so small text pools the way a big glyph does instead of dissolving.
+
+The playground's [`src/glyphs.ts`](src/glyphs.ts) draws words, sentences and SVG shapes this way.
 
 ## Settings
 
@@ -130,12 +132,12 @@ npm run check   # typecheck and formatting
 npm run build
 ```
 
-The playground is an [Astro](https://astro.build) page that builds to static HTML. Type to write a glyph, Enter to write a whole word, the arrow keys to step through a set, and pick a phase to hold the morph there.
+The playground is an [Astro](https://astro.build) page that builds to static HTML. Type to write a glyph, Enter to write the whole line (a word, a sentence or a pasted paragraph), the arrow keys to step through a set, and pick a phase to hold the morph there. Left alone it writes on its own, touring the sets and presets; Pause stops it.
 
 - `src/pool.ts`: the effect.
 - `src/pages/index.astro`: the page, with `src/components/` for the presets, the settings sheet and the text that inverts over the ink.
 - `src/main.ts`: starts the playground: the glyph sets, the writing line, the phases and the theme.
-- `src/glyphs.ts`: the glyph sets and how words and shapes are drawn.
+- `src/glyphs.ts`: the glyph sets and how words, sentences and shapes are drawn.
 - `src/ledger.ts`, `src/controls.ts`, `src/presets.ts`: the settings sheet, its controls and its presets.
 - `src/ink.ts`: the inverting text and the ink dots that mark what's chosen.
 - `src/fog.ts`: the drifting fog behind the glass.

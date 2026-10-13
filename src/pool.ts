@@ -64,12 +64,14 @@ export type Stage = {
   font: string;
 };
 
-/** Draws a glyph, named by its key, centred in the stage, in any opaque color. */
+/** Draws a glyph, named by its key, centred in the stage, in any opaque
+ *  color. Drawn smaller than the stage's size, say as a sentence, it returns
+ *  that share of the size, and the spread, sink, rise and rest scale to it. */
 export type Draw = (
   ctx: CanvasRenderingContext2D,
   key: string,
   stage: Stage,
-) => void;
+) => number | void;
 
 export type Options = {
   /** Draws a glyph. By default the key is the text. */
@@ -213,8 +215,10 @@ export const inkPool = (
   let blur: Program;
   let cut: Program;
   let fields: { tex: WebGLTexture; fb: WebGLFramebuffer }[] = [];
-  const glyphs = new Map<string, WebGLTexture>();
-  let blank: WebGLTexture;
+  // Each glyph's texture, and the share of the size it was drawn at.
+  type Glyph = { tex: WebGLTexture; em: number | null };
+  const glyphs = new Map<string, Glyph>();
+  let blank: Glyph;
   let half = false;
 
   const compile = (frag: string, names: string[]): Program => {
@@ -273,12 +277,12 @@ export const inkPool = (
     // Half floats keep a hard edge from stepping; bytes where a browser
     // can't draw into them.
     half = !!g.getExtension("EXT_color_buffer_float");
-    blank = texture(g.LINEAR);
+    blank = { tex: texture(g.LINEAR), em: null };
     g.texImage2D(g.TEXTURE_2D, 0, g.R8, 1, 1, 0, g.RED, g.UNSIGNED_BYTE, null);
   };
 
   const forget = () => {
-    for (const t of glyphs.values()) gl?.deleteTexture(t);
+    for (const { tex } of glyphs.values()) gl?.deleteTexture(tex);
     glyphs.clear();
   };
 
@@ -345,20 +349,29 @@ export const inkPool = (
     ctx.clearRect(0, 0, stage.width, stage.height);
     ctx.fillStyle = "#fff";
     ctx.strokeStyle = "#fff";
-    draw(ctx, key, stage);
+    const em = draw(ctx, key, stage);
     const t = texture(g.LINEAR_MIPMAP_LINEAR);
     g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, true);
     g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     g.texImage2D(g.TEXTURE_2D, 0, g.R8, g.RED, g.UNSIGNED_BYTE, scratch);
     g.generateMipmap(g.TEXTURE_2D);
-    glyphs.set(key, t);
+    const made = { tex: t, em: em && em > 0 ? em : 1 };
+    glyphs.set(key, made);
     // Four drawn glyphs at most: the pair on show and a couple to come.
     for (const [k, old] of glyphs) {
       if (glyphs.size <= 4) break;
-      g.deleteTexture(old);
+      g.deleteTexture(old.tex);
       glyphs.delete(k);
     }
-    return t;
+    return made;
+  };
+
+  // The rest's blur, a CSS filter on the canvas, at the glyph's own size.
+  let soft = "";
+  const soften = (em: number) => {
+    const px = settings.rest * stage.size * em;
+    const next = px > 0 ? `blur(${px.toFixed(2)}px)` : "";
+    if (next !== soft) canvas.style.filter = soft = next;
   };
 
   const render = () => {
@@ -372,11 +385,20 @@ export const inkPool = (
       flat.clearRect(0, 0, stage.width, stage.height);
       flat.fillStyle = flat.strokeStyle = `rgb(${ink.map((c) => c * 255)})`;
       flat.globalAlpha = settings.opacity;
-      draw(flat, shown, stage);
+      soften(draw(flat, shown, stage) || 1);
       return;
     }
     const g = gl;
-    const px = stage.size * dpr;
+    // Lengths are shares of the size each glyph was drawn at: the old one's
+    // as it goes, the new one's as it comes.
+    const next = glyph(m ? m.to : shown);
+    const last = glyph(m ? m.from : "");
+    const from = last.em ?? next.em ?? 1;
+    const to = next.em ?? from;
+    const mixed = m ? smooth(0.28, 0.72, t) : 1;
+    const em = from + (to - from) * mixed;
+    soften(em);
+    const px = stage.size * dpr * em;
     const sigma = m ? Math.sin(Math.PI * t) ** 1.4 * settings.spread * px : 0;
     // The spread runs at 1/d of the stage, so its blur stays a few texels
     // wide however far the ink reaches.
@@ -386,16 +408,18 @@ export const inkPool = (
     const fade = settings.fadeStart < 100;
 
     // The old glyph sinks, the new one rises.
-    const mixed = m ? smooth(0.28, 0.72, t) : 1;
-    const sink = m ? (smooth(0, 1, t) * settings.sink * px) / 100 / H : 0;
-    const rise = m ? ((1 - out(t)) * settings.rise * px) / 100 / H : 0;
+    const size = stage.size * dpr;
+    const sink = m
+      ? (smooth(0, 1, t) * settings.sink * size * from) / 100 / H
+      : 0;
+    const rise = m ? ((1 - out(t)) * settings.rise * size * to) / 100 / H : 0;
     g.bindFramebuffer(g.FRAMEBUFFER, fields[0].fb);
     g.viewport(0, 0, w, h);
     g.useProgram(mix.p);
     g.activeTexture(g.TEXTURE1);
-    g.bindTexture(g.TEXTURE_2D, glyph(m ? m.to : shown));
+    g.bindTexture(g.TEXTURE_2D, next.tex);
     g.activeTexture(g.TEXTURE0);
-    g.bindTexture(g.TEXTURE_2D, glyph(m ? m.from : ""));
+    g.bindTexture(g.TEXTURE_2D, last.tex);
     g.uniform1i(mix.u.a, 0);
     g.uniform1i(mix.u.b, 1);
     g.uniform2f(mix.u.ao, 0, sink);
@@ -577,10 +601,6 @@ export const inkPool = (
   const dress = (prev: Settings | null) => {
     if (prev) readInk();
     const changed = (k: keyof Settings) => !prev || prev[k] !== settings[k];
-    if (changed("rest")) {
-      const soft = settings.rest * stage.size;
-      canvas.style.filter = soft > 0 ? `blur(${soft.toFixed(2)}px)` : "";
-    }
     if (changed("breathe") || (breath && still.matches)) breathe();
     if (!frame) render();
   };

@@ -89,6 +89,9 @@ const phases = [
         </nav>
       </div>
       <nav class="top-nav" aria-label="Page">
+        <button type="button" id="pause">
+          <Ink text="Pause" />
+        </button>
         <a href="https://github.com/jsfowles/ink-pool#readme">
           <Ink text="Docs" />
         </a>
@@ -144,14 +147,14 @@ const phases = [
           type="text"
           id="write-text"
           name="glyph"
-          maxlength="12"
+          maxlength="280"
           spellcheck="false"
           autocapitalize="off"
           enterkeyhint="done"
-          placeholder="Type a letter, a number or a word…"
+          placeholder="Type a letter, a word or a sentence…"
         />
         <span class="write-enter" aria-hidden="true">
-          Enter writes the word
+          Enter writes it whole
         </span>
       </form>
     </footer>

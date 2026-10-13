@@ -340,6 +340,12 @@
   align-items: center;
   pointer-events: none;
 
+  // Centred on the glyph's ink, not the page: the stage sits 8vh up, and
+  // capitals ride a little above the middle of their box.
+  @include side {
+    padding-bottom: calc(8vh + 0.13 * var(--glyph));
+  }
+
   @include portrait {
     top: auto;
     display: block;
@@ -572,7 +578,7 @@
     padding: 88px 0 56px;
   }
 
-  .ink {
+  :root {
     --glyph: min(48vh, 40vw);
   }
 
@@ -580,6 +586,7 @@
   .phases {
     top: 84px;
     bottom: 56px;
+    padding-bottom: calc(0.13 * var(--glyph));
 
     button {
       padding: 3px 0;

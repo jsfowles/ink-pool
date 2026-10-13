@@ -115,23 +115,19 @@ export const startLedger = (onChange: Change, source: string) => {
       .reset as Key | undefined;
     if (key) update({ ...settings, [key]: base[key] });
   });
-  // The note: the pointed-at preset's, else the toured one's.
-  let touring = false;
+  // The note says what a preset does only while it's pointed at.
   const note = $("preset-note");
-  const rest = () => inkSwap(note, touring ? PRESETS[baseName].note : "");
   const choose = (name: string) => {
     baseName = name;
     base = PRESETS[baseName].settings;
     update({ ...base }, false, true);
   };
   for (const b of presets) {
-    b.addEventListener("click", () => {
-      touring = false;
-      choose(b.dataset.preset!);
-    });
+    b.addEventListener("click", () => choose(b.dataset.preset!));
     for (const type of ["pointerenter", "focus"])
       b.addEventListener(type, () => inkSwap(note, b.dataset.note!));
-    for (const type of ["pointerleave", "blur"]) b.addEventListener(type, rest);
+    for (const type of ["pointerleave", "blur"])
+      b.addEventListener(type, () => inkSwap(note, ""));
   }
 
   $<HTMLButtonElement>("copy-settings").addEventListener("click", (e) =>
@@ -179,14 +175,7 @@ export const startLedger = (onChange: Change, source: string) => {
     /** The next preset, for the page's own tour. */
     tour: () => {
       const names = Object.keys(PRESETS);
-      touring = true;
       choose(names[(names.indexOf(baseName) + 1) % names.length]);
-      rest();
-    },
-    /** Ends the tour, keeping the chosen preset. */
-    endTour: () => {
-      touring = false;
-      rest();
     },
   };
 };

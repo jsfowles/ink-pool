@@ -1,5 +1,5 @@
 import { paintFog } from "./fog";
-import { describe, draw, SETS } from "./glyphs";
+import { describe, draw, setBand, SETS } from "./glyphs";
 import { startLedger } from "./ledger";
 import { inkMark, inkRun, inkSwap, inkText, RUN } from "./ink";
 import { inkPool, PHASES, type Phase } from "./pool";
@@ -14,6 +14,8 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 const PAUSE = 1700;
 // Quiet this long after a key or a click.
 const IDLE = 9000;
+// And a line stays up long enough to read: this long a word.
+const READ = 300;
 
 const phases = [...$("phases").querySelectorAll<HTMLElement>("[data-phase]")];
 const holds = [
@@ -97,6 +99,27 @@ const explain = (name?: string) => {
   );
 };
 
+// A sentence sits between the header and whatever lies over the glyph's
+// foot: upright, the lists. Measured from the glyph's untransformed box, so
+// an open sheet doesn't skew it.
+setBand(() => {
+  const ink = $("ink");
+  const stage = ink.parentElement!.getBoundingClientRect();
+  const top = stage.top + ink.offsetTop;
+  const left = stage.left + ink.offsetLeft;
+  const over = (r: DOMRect) =>
+    r.right > left + ink.offsetWidth * 0.2 &&
+    r.left < left + ink.offsetWidth * 0.8;
+  let bottom = innerHeight;
+  for (const el of document.querySelectorAll(
+    ".presets .rail, .phases .rail, .write",
+  )) {
+    const r = el.getBoundingClientRect();
+    if (over(r)) bottom = Math.min(bottom, r.top - 16);
+  }
+  const head = document.querySelector(".top")!.getBoundingClientRect().bottom;
+  return { top: head + 16 - top, bottom: bottom - top };
+});
 const pool = inkPool($("pool"), undefined, {
   draw,
   onProgress: showProgress,
@@ -105,10 +128,7 @@ let touring = true;
 let tourStep = false;
 const ledger = startLedger((settings, { live, preset }) => {
   pool.set(settings);
-  if (!tourStep && touring) {
-    touring = false;
-    ledger.endTour();
-  }
+  if (!tourStep) touring = false;
   // Letting go of a slider or choosing a preset writes the next glyph. A
   // preset also lets go of a hold; a slider keeps it, to tune the held frame.
   if (live) return;
@@ -126,7 +146,9 @@ const setButtons = [
 const now = $("now");
 
 // Typed glyphs queue so each finishes; the page's own replace the queue.
+let last = "";
 const write = (key: string, announce = false, replace = false) => {
+  last = key;
   if (announce) now.textContent = describe(key);
   pool.show(key, { replace });
 };
@@ -157,25 +179,46 @@ let quietUntil = 0;
 let written = 0;
 let timer = 0;
 const touched = () => (quietUntil = performance.now() + IDLE);
+const reading = () =>
+  last.startsWith("line:") ? last.split(/\s+/).length * READ : 0;
 const keepWriting = () => {
   clearTimeout(timer);
   const writes = $<HTMLInputElement>("auto").checked && !reduced.matches;
-  timer = setTimeout(() => {
-    const free = performance.now() > quietUntil && !root.dataset.held;
-    if (writes && free && !document.hidden) {
-      // Every third glyph, the next preset (which writes one itself).
-      if (touring && ++written % 3 === 0) {
-        tourStep = true;
-        ledger.tour();
-        tourStep = false;
-        return;
+  timer = setTimeout(
+    () => {
+      const free = performance.now() > quietUntil && !root.dataset.held;
+      if (writes && free && !document.hidden) {
+        // Every third glyph, the next preset (which writes one itself).
+        if (touring && ++written % 3 === 0) {
+          tourStep = true;
+          ledger.tour();
+          tourStep = false;
+          return;
+        }
+        next();
       }
-      next();
-    }
-    keepWriting();
-  }, ledger.settings().duration + PAUSE);
+      keepWriting();
+    },
+    ledger.settings().duration + PAUSE + reading(),
+  );
 };
-$("auto").addEventListener("change", keepWriting);
+// Pause in the header and the switch in the settings are one control.
+const auto = $<HTMLInputElement>("auto");
+const pause = $<HTMLButtonElement>("pause");
+const showPause = () => {
+  inkText(pause, auto.checked ? "Pause" : "Play");
+  pause.ariaLabel = `${auto.checked ? "Pause" : "Play"} the writing`;
+};
+pause.addEventListener("click", () => {
+  auto.checked = !auto.checked;
+  showPause();
+  keepWriting();
+});
+auto.addEventListener("change", () => {
+  showPause();
+  keepWriting();
+});
+showPause();
 
 const holdAt = (name: string | null) => {
   const held = name && name !== "settled" ? name : "";
@@ -242,7 +285,12 @@ form.addEventListener("submit", (e) => {
   const value = field.value.trim();
   if (!value) return;
   touched();
-  write([...value].length > 1 ? `word:${value}` : `text:${value}`, true);
+  const kind = /\s/.test(value)
+    ? "line"
+    : [...value].length > 1
+      ? "word"
+      : "text";
+  write(`${kind}:${value}`, true);
   field.value = typed = "";
   form.removeAttribute("data-word");
 });

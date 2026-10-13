@@ -30,7 +30,7 @@ export const PRESETS: Record<string, { note: string; settings: Settings }> = {
   },
   Snap: {
     note: "Nearly a cut: barely pools",
-    settings: { ...DEFAULTS, duration: 320, spread: 0.015, sink: 2, rise: 1 },
+    settings: { ...DEFAULTS, duration: 560, spread: 0.015, sink: 2, rise: 1 },
   },
   Mercury: {
     note: "Strands snap into hard, bright beads",
