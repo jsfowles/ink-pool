@@ -1,0 +1,34 @@
+---
+// The presets: names in a list, the chosen one dotted, a note below on
+// what the pointed-at one does. Down the page's left edge, or upright, in
+// the thumb's reach above the writing line. Their behaviour is in
+// ledger.ts.
+import { PRESETS } from "../presets";
+import Ink from "./Ink.astro";
+---
+
+<nav class="presets" aria-label="Presets">
+  <div class="rail">
+    <span class="preset-mark" id="preset-mark" aria-hidden="true"></span>
+    <p class="rail-label" aria-hidden="true">
+      <Ink text="Presets" />
+    </p>
+    <ul>
+      {Object.entries(PRESETS).map(([name, { note }]) => (
+        <li>
+          <button
+            type="button"
+            data-preset={name}
+            data-note={note}
+            aria-pressed="false"
+          >
+            <Ink text={name} />
+          </button>
+        </li>
+      ))}
+    </ul>
+    <p class="preset-note" id="preset-note">
+      <Ink />
+    </p>
+  </div>
+</nav>

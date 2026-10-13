@@ -1,0 +1,58 @@
+---
+// The settings ledger: the settings and the copies. Its behaviour is in
+// ledger.ts. A side sheet on desktop, a bottom sheet on a phone.
+import "./Ledger.scss";
+import { GROUPS } from "../controls";
+---
+
+<aside class="ledger" id="ledger" aria-labelledby="ledger-title">
+  <header class="ledger-head">
+    <h2 id="ledger-title" tabindex="-1">
+      Settings <span class="base" id="base"></span>
+    </h2>
+    <button type="button" class="quiet" id="close-ledger">
+      Close
+    </button>
+  </header>
+
+  <form class="settings" id="settings" autocomplete="off">
+    {GROUPS.map((group) => (
+      <fieldset>
+        <legend>{group.label}</legend>
+        {group.controls.map((c) => (
+          <div class="field" data-field={c.key}>
+            <label for={c.key}>{c.label}</label>
+            <output for={c.key} />
+            <input
+              type="range"
+              id={c.key}
+              name={c.key}
+              min={c.min}
+              max={c.max}
+              step={c.step}
+            />
+          </div>
+        ))}
+      </fieldset>
+    ))}
+  </form>
+
+  <label class="switch">
+    <input type="checkbox" id="auto" checked />
+    <span>Write on its own while you’re idle</span>
+  </label>
+
+  <div class="copies" aria-live="polite">
+    <button type="button" id="copy-settings" data-label="Copy settings">
+      Copy settings
+    </button>
+    <button
+      type="button"
+      class="primary"
+      id="copy-file"
+      data-label="Copy pool.ts"
+    >
+      Copy pool.ts
+    </button>
+  </div>
+</aside>

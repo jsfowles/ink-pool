@@ -1,0 +1,189 @@
+@use "../styles/mixins" as *;
+
+// The ledger: a plain sheet of the same fog, sliding in from the right
+// edge (from the foot on a phone), all hairlines.
+.ledger {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--ledger-w);
+  padding: 40px 40px 36px;
+  display: grid;
+  align-content: start;
+  gap: 40px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  background: var(--sheet);
+  z-index: 5;
+  translate: 100% 0;
+  visibility: hidden;
+  transition:
+    translate var(--duration-sheet-out) var(--ease-out),
+    visibility 0s var(--duration-sheet-out);
+
+  [data-ledger="open"] & {
+    translate: 0 0;
+    visibility: visible;
+    transition: translate var(--duration-sheet-in) var(--ease-out);
+  }
+
+  // On its side, a phone's notch may sit by the sheet's edge.
+  @include side {
+    padding-right: max(40px, env(safe-area-inset-right));
+  }
+
+  @include portrait {
+    top: auto;
+    left: 0;
+    width: auto;
+    max-height: 56dvh;
+    padding: 28px var(--edge) calc(28px + env(safe-area-inset-bottom));
+    gap: 32px;
+    translate: 0 100%;
+  }
+
+  // With reduced motion it fades in place rather than sliding.
+  @media (prefers-reduced-motion: reduce) {
+    translate: none;
+    opacity: 0;
+    transition:
+      opacity 200ms var(--ease-out),
+      visibility 0s 200ms;
+
+    [data-ledger="open"] & {
+      opacity: 1;
+      transition: opacity 200ms var(--ease-out);
+    }
+  }
+}
+
+.ledger-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+
+  h2 {
+    font-size: var(--text-name);
+    font-weight: 500;
+
+    &:focus {
+      outline: none;
+    }
+  }
+
+  .base {
+    margin-left: 8px;
+    color: var(--text-faint);
+    font-size: var(--text-ui);
+    font-weight: 400;
+  }
+}
+
+.quiet {
+  color: var(--text-muted);
+  transition: color 150ms var(--ease-out);
+
+  @include phone {
+    padding: 10px 0 10px 16px;
+    margin: -10px 0;
+  }
+}
+
+.settings {
+  display: grid;
+  gap: 36px;
+
+  fieldset {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    display: grid;
+    gap: 14px;
+  }
+
+  legend {
+    padding: 0 0 10px;
+    color: var(--text-faint);
+    font-size: var(--text-small);
+  }
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline;
+  column-gap: 12px;
+
+  &[hidden] {
+    display: none;
+  }
+
+  label {
+    color: var(--text-muted);
+  }
+
+  input {
+    grid-column: 1 / -1;
+  }
+}
+
+// A changed value: what it was, which puts it back.
+.was {
+  color: var(--text-faint);
+  font-size: var(--text-small);
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      color: var(--text);
+    }
+  }
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 150ms var(--ease-out);
+
+  input {
+    appearance: none;
+    flex: none;
+    width: 9px;
+    height: 9px;
+    margin: 0;
+    border: 1px solid var(--ink);
+    border-radius: 50%;
+    cursor: pointer;
+
+    &:checked {
+      background: var(--ink);
+    }
+  }
+}
+
+// The copies, as plain words; the file, the one you came for, in full.
+.copies {
+  display: flex;
+  justify-content: space-between;
+
+  button {
+    color: var(--text-muted);
+    transition: color 150ms var(--ease-out);
+  }
+
+  .primary {
+    color: var(--text);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .quiet:hover,
+  .switch:hover,
+  .copies button:hover {
+    color: var(--text);
+  }
+}

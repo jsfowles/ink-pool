@@ -1,0 +1,32 @@
+// The theme switch, as fog: the old glass blurs out into mist while the new
+// one comes into focus from it. Both pictures are the browser's snapshots,
+// so the blur runs on the GPU.
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 450ms;
+  animation-timing-function: var(--ease-out);
+  animation-fill-mode: both;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  animation-name: fog-out;
+}
+
+::view-transition-new(root) {
+  animation-name: fog-in;
+}
+
+@keyframes fog-out {
+  to {
+    opacity: 0;
+    filter: blur(14px);
+  }
+}
+
+@keyframes fog-in {
+  from {
+    opacity: 0;
+    filter: blur(14px);
+  }
+}

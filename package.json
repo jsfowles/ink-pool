@@ -1,0 +1,24 @@
+{
+  "name": "ink-pool",
+  "private": true,
+  "type": "module",
+  "description": "A glyph transition: two glyphs blur into one pool of ink, a threshold keeps its edge hard, and the next glyph firms up out of it.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "format": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore --ignore-path .git/info/exclude",
+    "check": "astro check && prettier --check . --ignore-path .gitignore --ignore-path .prettierignore --ignore-path .git/info/exclude"
+  },
+  "dependencies": {
+    "astro": "^7.3.8"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "prettier": "^3.9.10",
+    "prettier-plugin-astro": "^1.1.1",
+    "sass-embedded": "^1.105.1",
+    "typescript": "^5.9.3"
+  }
+}

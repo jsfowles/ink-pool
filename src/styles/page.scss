@@ -1,0 +1,703 @@
+@use "mixins" as *;
+
+// The glass: lit fog over the whole page, drifting.
+.glass {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: radial-gradient(
+    60% 70% at 50% 46%,
+    var(--fog-hi) 0%,
+    var(--fog) 55%,
+    var(--fog-lo) 100%
+  );
+}
+
+.fog {
+  position: absolute;
+  inset: -12%;
+  background-size: 100% 100%;
+  opacity: var(--fog-opacity);
+
+  @media (prefers-reduced-motion: no-preference) {
+    animation: drift 70s ease-in-out infinite alternate;
+  }
+}
+
+.fog-far {
+  scale: -1.35 1.35;
+  opacity: calc(var(--fog-opacity) * 0.53);
+  animation-duration: 110s;
+  animation-direction: alternate-reverse;
+}
+
+@keyframes drift {
+  from {
+    translate: -3% -1%;
+  }
+  to {
+    translate: 3% 1.5%;
+  }
+}
+
+// The glyph, the whole glass a button that writes the next one.
+.stage {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  // The glyph's box is taller than its room upright (it holds the ink's
+  // spread too): centred on the room, it overflows both ways evenly.
+  place-content: center;
+  padding-bottom: 8vh;
+
+  // Upright: the glyph takes the whole room between the header and the
+  // writing line; the lists lie over its foot, their Ink text inverting
+  // where it crosses ink.
+  @include portrait {
+    container-type: size;
+    padding: calc(var(--edge) + 72px + env(safe-area-inset-top)) 0
+      calc(76px + env(safe-area-inset-bottom));
+  }
+}
+
+.ink {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(100vw, calc(var(--glyph) * 2));
+  height: min(100dvh, calc(var(--glyph) * 1.7));
+  color: var(--ink);
+  font-size: var(--glyph);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    translate var(--duration-sheet-out) var(--ease-out),
+    scale var(--duration-sheet-out) var(--ease-out);
+
+  // Upright, as large as the room's width allows (a letter is about 0.62
+  // of its size wide), never so tall it meets the header; one too wide
+  // fits itself to the width.
+  @include portrait {
+    --glyph: min(118cqw, 72cqh);
+  }
+
+  // Focused from the keyboard: a small ink dot under the glyph, not a box.
+  &:focus-visible {
+    outline: none;
+
+    &::after {
+      content: "";
+      position: absolute;
+      bottom: 4%;
+      left: 50%;
+      width: 6px;
+      height: 6px;
+      translate: -50% 0;
+      border-radius: 50%;
+      background: var(--ink);
+    }
+  }
+
+  // With the settings open it steps aside, beside the side sheet or above
+  // the bottom one, so it stays in view while you tune.
+  [data-ledger="open"] & {
+    transition-duration: var(--duration-sheet-in);
+
+    @include side {
+      translate: calc(var(--ledger-w) / -2) 0;
+      scale: 0.82;
+    }
+
+    @include portrait {
+      translate: 0 -21dvh;
+      scale: 0.45;
+    }
+
+    // An upright tablet's glyph is larger still: a little smaller here.
+    @include tablet {
+      translate: 0 -25dvh;
+      scale: 0.4;
+    }
+  }
+}
+
+// The pool's stage: its canvas fills it, the glyph drawn at its
+// font-size with room around for the ink to spread and sink.
+.pool {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+// Ink text (components/Ink.astro): dark on the fog, light over a glyph, and
+// a muted label keeps its grey on the fog. --tone is its grey; --tone-full
+// is full strength.
+.ink-text {
+  display: inline-grid;
+
+  > * {
+    grid-area: 1 / 1;
+  }
+}
+
+.ink-a {
+  color: #fff;
+  mix-blend-mode: difference;
+}
+
+.ink-b {
+  color: var(--tone, var(--tone-full));
+  mix-blend-mode: var(--lift);
+  transition: color 150ms var(--ease-out);
+}
+
+// The edges sit straight on the page, after the glyph and with nothing
+// boxing them in (no z-index, transform or opacity), so their Ink text
+// blends with the glyph under it.
+.top {
+  position: absolute;
+  top: calc(40px + env(safe-area-inset-top));
+  left: var(--edge-left);
+  right: var(--edge-right);
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+
+  // A phone's header: the name and links on one line, the sets below.
+  @include phone {
+    top: calc(20px + env(safe-area-inset-top));
+    display: grid;
+    grid-template:
+      "name nav" auto
+      "sets sets" auto / 1fr auto;
+    gap: 18px 16px;
+    align-items: baseline;
+
+    .name {
+      grid-area: name;
+    }
+    .sets {
+      grid-area: sets;
+    }
+    .top-nav {
+      grid-area: nav;
+    }
+  }
+}
+
+.brand {
+  display: grid;
+  gap: 22px;
+
+  @include phone {
+    display: contents;
+  }
+}
+
+.name {
+  font-size: var(--text-name);
+  font-weight: 500;
+}
+
+// The name's i is dotted with the page's ink dot, the same mark that
+// stands by the chosen set, preset and phase.
+.name-mark {
+  display: inline-flex;
+}
+
+.name-i {
+  position: relative;
+
+  &::after {
+    @include dot(0.2em);
+    content: "";
+    position: absolute;
+    left: calc(50% + 0.05em);
+    top: 0.02em;
+    translate: -50% 0;
+  }
+}
+
+// The glyph sets, at the name's size under it.
+.sets {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 30px;
+  font-size: var(--text-name);
+  --tone: var(--text-faint);
+
+  @include phone {
+    gap: 4px 26px;
+  }
+
+  button {
+    padding-top: 4px;
+  }
+
+  [aria-pressed="true"] {
+    --tone: var(--tone-full);
+  }
+}
+
+.top-nav {
+  display: flex;
+  gap: 30px;
+  white-space: nowrap;
+  font-size: var(--text-name);
+  --tone: var(--text-muted);
+
+  @include phone {
+    gap: 22px;
+  }
+
+  // Open, Settings is marked like a chosen set: the ink dot under it.
+  [aria-expanded="true"] {
+    --tone: var(--tone-full);
+
+    &::before {
+      @include dot;
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      margin-left: -2.5px;
+    }
+  }
+}
+
+// Every list's buttons: pointed at, a hollow ring where its dot would sit,
+// inverting like the dots; under the sets and links, beside the presets
+// and phases.
+.sets button,
+.top-nav :is(a, button),
+.presets button,
+.phases button {
+  position: relative;
+
+  &::after {
+    @include dot;
+    content: "";
+    position: absolute;
+    background: none;
+    box-shadow: inset 0 0 0 1px #fff;
+    opacity: 0;
+    scale: 0.4;
+    transition:
+      opacity 150ms var(--ease-out),
+      scale 150ms var(--ease-out);
+    pointer-events: none;
+  }
+}
+
+.sets button,
+.top-nav :is(a, button) {
+  padding-bottom: 12px;
+
+  &::after {
+    left: 50%;
+    bottom: 0;
+    margin-left: -2.5px;
+  }
+}
+
+.presets button::after,
+.phases button::after {
+  top: 50%;
+  margin-top: -2.5px;
+}
+
+.presets button::after {
+  left: -14px;
+}
+
+.phases button::after {
+  right: -14px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.sets, .presets) button:not([aria-pressed="true"]):hover::after,
+  .phases button:hover::after,
+  .top-nav a:hover::after,
+  .top-nav button:not([aria-expanded="true"]):hover::after {
+    opacity: 1;
+    scale: 1;
+  }
+
+  :is(.top-nav, .sets, .presets, .phases) :is(a, button):hover {
+    --tone: var(--tone-full);
+  }
+}
+
+// The chosen set's and preset's dots, which run to the next one chosen
+// like a drop (ink.ts), and the phase dot, which runs with the morph.
+.sets-mark,
+.preset-mark,
+.phase-mark {
+  @include dot;
+  position: absolute;
+  top: 0;
+  pointer-events: none;
+}
+
+.sets-mark,
+.preset-mark {
+  left: 0;
+
+  // Until the page has placed it, it isn't anywhere.
+  .js:not(.ready) & {
+    visibility: hidden;
+  }
+}
+
+.phase-mark {
+  right: -14px;
+  margin-top: -2.5px;
+}
+
+// A list down an edge, centred on it; its note hangs below. The edge's
+// whole height is the list's, to centre it, but only the list takes
+// clicks, so the header above stays in reach.
+.presets,
+.phases {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+
+  // Upright: lists in the thumb's reach, above the writing line, the
+  // presets bottom left and the phases mirroring them on the right.
+  @include portrait {
+    top: auto;
+    display: block;
+  }
+}
+
+.rail {
+  position: relative;
+  pointer-events: auto;
+}
+
+// A list's name, shown only upright, where there's no hover to explain it.
+.rail-label {
+  display: none;
+  padding-bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  --tone: var(--text-faint);
+
+  .phases & {
+    text-align: right;
+  }
+
+  @include portrait {
+    display: block;
+  }
+}
+
+// Under a list: what the pointed-at preset or phase does.
+.preset-note,
+.phase-note {
+  position: absolute;
+  top: 100%;
+  width: 180px;
+  margin-top: 10px;
+  font-size: var(--text-small);
+  --tone: var(--text-muted);
+
+  @include portrait {
+    display: none;
+  }
+}
+
+// The presets, down the left edge.
+.presets {
+  left: var(--edge-left);
+
+  @include portrait {
+    bottom: calc(var(--band-foot) + env(safe-area-inset-bottom));
+  }
+
+  ul {
+    display: grid;
+  }
+
+  button {
+    padding: 6px 0;
+    text-align: left;
+    --tone: var(--text-faint);
+  }
+
+  [aria-pressed="true"] {
+    --tone: var(--tone-full);
+  }
+}
+
+.preset-note {
+  left: 0;
+}
+
+// The morph's phases, down the right edge, inked in as the morph passes
+// through them. Each holds the morph there.
+.phases {
+  right: var(--edge-right);
+
+  // A row shorter than the presets, so a row higher, to start level.
+  @include portrait {
+    bottom: calc(var(--band-foot) + var(--row) + env(safe-area-inset-bottom));
+  }
+
+  ol {
+    display: grid;
+    justify-items: end;
+  }
+
+  button {
+    padding: 6px 0;
+    --tone: color-mix(
+      in oklab,
+      var(--tone-full) calc(var(--near, 0) * 100%),
+      var(--text-faint)
+    );
+  }
+
+  button[aria-pressed="true"] {
+    --tone: var(--tone-full);
+  }
+
+  // With the settings open beside the glass, the list moves over with the
+  // glyph to stand by the sheet's edge. It moves by its place, not by a
+  // transform, which would cut its Ink text's blend from the glass.
+  @include side {
+    transition: right var(--duration-sheet-out) var(--ease-out);
+  }
+
+  [data-ledger="open"] & {
+    @include side {
+      right: calc(var(--ledger-w) + var(--edge));
+      transition-duration: var(--duration-sheet-in);
+    }
+  }
+}
+
+.phase-note {
+  right: 0;
+  text-align: right;
+}
+
+// Upright, each row a thumb's height.
+.presets button,
+.phases button {
+  @include portrait {
+    display: flex;
+    align-items: center;
+    height: var(--row);
+    padding: 0;
+  }
+}
+
+// The writing line, under the glyph: type into it and each key pools in.
+// It is one field, so it blends whole: white, by difference, its greys the
+// white at lower opacity.
+.foot {
+  position: fixed;
+  left: var(--edge-left);
+  right: var(--edge-right);
+  bottom: 40px;
+  display: grid;
+  justify-items: center;
+  z-index: 2;
+  mix-blend-mode: difference;
+  --text: #fff;
+  --text-muted: rgb(255 255 255 / 0.72);
+  --text-faint: rgb(255 255 255 / 0.46);
+  --hairline: rgb(255 255 255 / 0.22);
+  --ink: #fff;
+  color: var(--text);
+
+  @include phone {
+    bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+
+  // It recentres beside the side sheet, with the glyph.
+  @include side {
+    transition: right var(--duration-sheet-out) var(--ease-out);
+  }
+
+  [data-ledger="open"] & {
+    @include side {
+      right: calc(var(--ledger-w) + var(--edge));
+      transition-duration: var(--duration-sheet-in);
+    }
+  }
+}
+
+// Upright, the bottom sheet covers the lists and the writing line: once it
+// has, they step away, out of the keyboard's reach too.
+[data-ledger="open"] :is(.presets, .phases, .foot) {
+  @include portrait {
+    visibility: hidden;
+    transition: visibility 0s var(--duration-sheet-in);
+  }
+}
+
+.write {
+  position: relative;
+  width: min(100%, 26em);
+
+  input {
+    width: 100%;
+    padding: 10px 0;
+    border: 0;
+    border-bottom: 1px solid var(--hairline);
+    border-radius: 0;
+    background: transparent;
+    caret-color: var(--ink);
+    font-size: 1rem;
+    text-align: center;
+    transition: border-color 200ms var(--ease-out);
+
+    // 16px keeps iOS from zooming in on focus.
+    @include phone {
+      font-size: 16px;
+    }
+
+    &::placeholder {
+      color: var(--text-muted);
+      transition: opacity 200ms var(--ease-out);
+    }
+
+    &:focus::placeholder {
+      opacity: 0.5;
+    }
+
+    &:focus-visible {
+      outline: none;
+      border-bottom-color: var(--ink);
+    }
+  }
+}
+
+// Once a word is in the line, how to write it whole.
+.write-enter {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 10px;
+  color: var(--text-faint);
+  font-size: var(--text-small);
+  text-align: center;
+  opacity: 0;
+  transition: opacity 200ms var(--ease-out);
+
+  [data-word] & {
+    opacity: 1;
+  }
+}
+
+// A phone on its side: the header tightens, the glyph takes the room
+// below it, and the lists stand between the header and the writing line
+// with closer rows and no notes.
+@include short {
+  .top {
+    top: 16px;
+  }
+
+  .brand {
+    gap: 8px;
+  }
+
+  .stage {
+    padding: 88px 0 56px;
+  }
+
+  .ink {
+    --glyph: min(48vh, 40vw);
+  }
+
+  .presets,
+  .phases {
+    top: 84px;
+    bottom: 56px;
+
+    button {
+      padding: 3px 0;
+    }
+  }
+
+  .preset-note,
+  .phase-note {
+    display: none;
+  }
+
+  .foot {
+    bottom: 12px;
+  }
+}
+
+// The edges come up once the glass has drawn: each piece of Ink text and
+// each dot comes into focus out of a slight blur, the header first, then
+// the lists, then the writing line. They fade themselves, never a box
+// around them: a box part-way faded would cut their blend from the glass
+// (and flash them white).
+$entering: ":is(.top, .presets, .phases) :is(.ink-a, .ink-b, .sets-mark, .preset-mark, .phase-mark)";
+
+.js:not(.ready) {
+  .fog,
+  .foot,
+  #{$entering},
+  .name-i::after {
+    opacity: 0;
+  }
+}
+
+.ready {
+  --enter: 0ms;
+
+  .presets {
+    --enter: 160ms;
+  }
+
+  .phases {
+    --enter: 220ms;
+  }
+
+  .foot {
+    --enter: 320ms;
+  }
+
+  .foot,
+  #{$entering},
+  .name-i::after {
+    animation: enter 700ms var(--ease-out) var(--enter) backwards;
+  }
+
+  .fog {
+    transition: opacity 900ms var(--ease-out) 350ms;
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ready .fog {
+    transition: none;
+  }
+
+  @keyframes enter {
+    from {
+      opacity: 0;
+    }
+  }
+}

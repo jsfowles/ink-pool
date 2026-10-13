@@ -1,0 +1,166 @@
+---
+import "../styles/index.scss";
+
+import Ink from "../components/Ink.astro";
+import Ledger from "../components/Ledger.astro";
+import Presets from "../components/Presets.astro";
+import { SETS } from "../glyphs";
+
+const description =
+  "Ink pool: a glyph that melts into the next one. Both blur into one pool of ink, a threshold keeps its edge hard, and the next glyph firms up out of it. Tune it, then copy one file.";
+// The morph's phases, and what each one is.
+const phases = [
+  ["start", "The old glyph, just beginning to blur."],
+  ["melting", "Both blur, and their ink runs together."],
+  ["pooled", "One pool of ink, at its widest."],
+  ["forming", "The new glyph sharpens out of the pool."],
+  ["settled", "The new glyph, at rest. Lets a hold go."],
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#e7e6e0" />
+    <title>Ink Pool</title>
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="description" content={description} />
+    <link
+      rel="preload"
+      href="/fonts/poppins-latin-700-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <script is:inline>
+      document.documentElement.classList.add("js");
+      // The glass you chose last, or your system's, before the first paint.
+      try {
+        const theme =
+          localStorage.getItem("ink-pool:theme") ??
+          (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "");
+        if (theme) document.documentElement.dataset.theme = theme;
+      } catch {}
+      setTimeout(() => document.documentElement.classList.add("ready"), 3000);
+    </script>
+  </head>
+  <body>
+    <div class="glass" aria-hidden="true">
+      <div class="fog"></div>
+      <div class="fog fog-far"></div>
+    </div>
+
+    <main class="stage">
+      <button type="button" class="ink" id="ink" aria-describedby="ink-help">
+        <span class="pool" id="pool" aria-hidden="true"></span>
+        <span class="sr-only">Write the next glyph</span>
+      </button>
+      <p class="sr-only" id="ink-help">
+        Or type in the field below. The arrow keys step through the set.
+      </p>
+      <p class="sr-only" id="now" aria-live="polite"></p>
+    </main>
+
+    <header class="top">
+      <div class="brand">
+        <h1 class="name" translate="no">
+          <span class="sr-only">ink pool</span>
+          <span class="name-mark" aria-hidden="true">
+            <span class="name-i">
+              <Ink text="ı" />
+            </span>
+            <Ink text="nk pool" />
+          </span>
+        </h1>
+        <nav class="sets" id="sets" aria-label="Glyph set">
+          {SETS.map((s) => (
+            <button type="button" data-set={s.id} aria-pressed="false">
+              <Ink text={s.label} />
+            </button>
+          ))}
+          <span class="sets-mark" id="sets-mark" aria-hidden="true" />
+        </nav>
+      </div>
+      <nav class="top-nav" aria-label="Page">
+        <a href="https://github.com/jsfowles/ink-pool#readme">
+          <Ink text="Docs" />
+        </a>
+        <button
+          type="button"
+          data-opens=""
+          aria-expanded="false"
+          aria-controls="ledger"
+        >
+          <Ink text="Settings" />
+        </button>
+        <button type="button" id="theme">
+          <Ink text="Dark" />
+        </button>
+      </nav>
+    </header>
+
+    <Presets />
+
+    <nav class="phases" aria-label="Hold the morph at">
+      <div class="rail">
+        <span class="phase-mark" id="phase-mark" aria-hidden="true"></span>
+        <p class="rail-label" aria-hidden="true">
+          <Ink text="Phase" />
+        </p>
+        <ol id="phases">
+          {phases.map(([p, note]) => (
+            <li data-phase={p}>
+              <button
+                type="button"
+                data-hold={p}
+                data-note={note}
+                aria-pressed="false"
+                aria-description={note}
+              >
+                <Ink text={p} />
+              </button>
+            </li>
+          ))}
+        </ol>
+        <p class="phase-note" id="phase-note" aria-hidden="true">
+          <Ink />
+        </p>
+      </div>
+    </nav>
+
+    <footer class="foot">
+      <form class="write" id="write" autocomplete="off">
+        <label class="sr-only" for="write-text">
+          Write a glyph
+        </label>
+        <input
+          type="text"
+          id="write-text"
+          name="glyph"
+          maxlength="12"
+          spellcheck="false"
+          autocapitalize="off"
+          enterkeyhint="done"
+          placeholder="Type a letter, a number or a word…"
+        />
+        <span class="write-enter" aria-hidden="true">
+          Enter writes the word
+        </span>
+      </form>
+    </footer>
+
+    <Ledger />
+
+    <script>
+      import "../main";
+    </script>
+  </body>
+</html>
