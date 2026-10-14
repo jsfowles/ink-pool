@@ -74,7 +74,7 @@ export type Draw = (
 ) => number | void;
 
 export type Options = {
-  /** Draws a glyph. By default the key is the text. */
+  /** Draws a glyph. By default the key is the text, wrapped if it's long. */
   draw?: Draw;
   /** Called as the morph passes from phase to phase. */
   onPhase?: (phase: Phase) => void;
@@ -85,11 +85,37 @@ export type Options = {
   queue?: number;
 };
 
-const drawText: Draw = (ctx, key, { width, height, font }) => {
-  ctx.font = font;
+// The text at the stage's size; too wide, it wraps and shrinks until its
+// lines fit, a glyph's size tall.
+const drawText: Draw = (ctx, text, { width, height, size, font }) => {
+  const room = width * 0.9;
+  let px = size * 1.05;
+  let lines: string[];
+  do {
+    px /= 1.05;
+    ctx.font = font.replace(`${size}px`, `${px}px`);
+    lines = [];
+    for (const word of text.split(/\s+/)) {
+      const line = lines.length ? `${lines.at(-1)} ${word}` : word;
+      if (lines.length && ctx.measureText(line).width <= room)
+        lines[lines.length - 1] = line;
+      else lines.push(word);
+    }
+  } while (
+    px > 4 &&
+    ((lines.length > 1 && lines.length * px * 1.1 > size) ||
+      lines.some((line) => ctx.measureText(line).width > room))
+  );
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(key, width / 2, height / 2);
+  lines.forEach((line, i) =>
+    ctx.fillText(
+      line,
+      width / 2,
+      height / 2 + (i - (lines.length - 1) / 2) * px * 1.1,
+    ),
+  );
+  return px / size;
 };
 
 const smooth = (a: number, b: number, t: number) => {

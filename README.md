@@ -56,7 +56,7 @@ A third argument takes options:
 
 ```ts
 const pool = inkPool(el, DEFAULTS, {
-  draw, // draws a glyph from its key; by default the key is the text
+  draw, // draws a glyph from its key; by default the text, wrapped if long
   onPhase: (phase) => {}, // as the morph passes from phase to phase
   onProgress: (t) => {}, // each frame, how far the morph has got, 0 to 1
   queue: 3, // how many glyphs may wait; 0 cuts a morph short instead
@@ -86,55 +86,16 @@ const draw: Draw = (ctx, key, { width, height, size, font }) => {
 
 ### Sentences and paragraphs
 
-A glyph can be a whole sentence or a paragraph: its key is just the text, and the pool draws it once into a texture like any other glyph, so a long one costs no more per frame than a letter. The pool doesn't wrap text itself, though. Wrap it in your own `draw`, and return how much smaller than `size` you drew it:
+Show a sentence or a paragraph like any glyph:
 
 ```ts
-import type { Draw } from "./pool";
-
-const LEAD = 1.1; // line height, in the text's own size
-
-const draw: Draw = (ctx, text, { width, height, size, font }) => {
-  const room = width * 0.9;
-  const words = text.split(/\s+/);
-  const wrap = () => {
-    const lines = [words[0]];
-    for (const word of words.slice(1)) {
-      const line = `${lines.at(-1)} ${word}`;
-      if (ctx.measureText(line).width <= room) lines[lines.length - 1] = line;
-      else lines.push(word);
-    }
-    return lines;
-  };
-  // Shrink until the lines fit in the glyph's height and the stage's width.
-  let px = size;
-  let lines: string[];
-  do {
-    px *= 0.95;
-    ctx.font = font.replace(`${size}px`, `${px}px`);
-    lines = wrap();
-  } while (
-    px > 8 &&
-    (lines.length * px * LEAD > size ||
-      lines.some((line) => ctx.measureText(line).width > room))
-  );
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  lines.forEach((line, i) => {
-    const y = height / 2 + (i - (lines.length - 1) / 2) * px * LEAD;
-    ctx.fillText(line, width / 2, y);
-  });
-  return px / size;
-};
-
-const pool = inkPool(el, DEFAULTS, { draw });
 pool.show("Ink runs into ink");
 ```
 
-That return value matters. The spread, sink, rise and resting blur are shares of the element's font size, and a line of small text is a fraction of it: without it, a spread sized for one big letter swamps every small one, and thin strokes blur away under the threshold mid-morph. Return `px / size` and those lengths scale to the text you drew, so it pools the way a big glyph does.
+Text too wide for the stage wraps into lines and shrinks until it fits, no taller than one glyph. The spread, sink, rise and resting blur shrink with it, so small text pools the way a big letter does instead of dissolving. With your own `draw`, return the share of `size` you drew at for the same scaling.
 
-- **Give it time.** A paragraph takes a while to read. If something changes the text on a timer, leave it up longer the more words it has; the playground adds 300ms a word.
-- **Say it too.** The canvas is hidden from screen readers, so put the same text somewhere they can read it.
-- **Lay it out your way.** Everything in `draw` is yours: left-aligned lines, a different line height, or a smaller box than the whole stage. The playground's [`src/glyphs.ts`](src/glyphs.ts) balances its lines so none runs much longer than the rest, and keeps them clear of the lists on a phone.
+- **Give it time.** A paragraph takes a while to read; leave it up longer the more words it has.
+- **Say it too.** The canvas is hidden from screen readers, so put the text somewhere they can read it.
 
 ## Settings
 
