@@ -246,6 +246,31 @@
   }
 }
 
+// Pause and play: a slot a letter wide, and over it the icon's own pool,
+// with room round it for the ink to spread. White by difference, like the
+// dots.
+.pause-slot {
+  display: inline-block;
+  width: 1em;
+  height: 1lh;
+  vertical-align: top;
+}
+
+.pause-icon {
+  position: absolute;
+  // Level with the capitals' middle: 0.7em down a 1.4 line, in the header's
+  // own size (the icon's is its canvas's).
+  top: calc(0.7 * var(--text-name));
+  left: 50%;
+  width: 32px;
+  height: 32px;
+  translate: -50% -50%;
+  color: #fff;
+  font-size: 32px;
+  mix-blend-mode: difference;
+  pointer-events: none;
+}
+
 // The hover ring, where a list's dot would sit.
 .sets button,
 .top-nav :is(a, button),
@@ -605,7 +630,7 @@
 
 // Each Ink span and dot fades itself: fading a box around them would cut
 // their blend and flash them white.
-$entering: ":is(.top, .presets, .phases) :is(.ink-a, .ink-b, .sets-mark, .preset-mark, .phase-mark)";
+$entering: ":is(.top, .presets, .phases) :is(.ink-a, .ink-b, .sets-mark, .preset-mark, .phase-mark, .pause-icon)";
 
 .js:not(.ready) {
   .fog,

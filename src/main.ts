@@ -1,8 +1,8 @@
 import { paintFog } from "./fog";
-import { describe, draw, setBand, SETS } from "./glyphs";
+import { describe, draw, drawIcon, setBand, SETS } from "./glyphs";
 import { startLedger } from "./ledger";
 import { inkMark, inkRun, inkSwap, inkText, RUN } from "./ink";
-import { inkPool, PHASES, type Phase } from "./pool";
+import { DEFAULTS, inkPool, PHASES, type Phase } from "./pool";
 import source from "./pool.ts?raw";
 
 const $ = <T extends HTMLElement>(id: string) =>
@@ -205,8 +205,10 @@ const keepWriting = () => {
 // Pause in the header and the switch in the settings are one control.
 const auto = $<HTMLInputElement>("auto");
 const pause = $<HTMLButtonElement>("pause");
+// Its icon pools from one to the other, on the Glass preset.
+const icon = inkPool($("pause-icon"), DEFAULTS, { draw: drawIcon, queue: 0 });
 const showPause = () => {
-  inkText(pause, auto.checked ? "Pause" : "Play");
+  icon.show(auto.checked ? "pause" : "play");
   pause.ariaLabel = `${auto.checked ? "Pause" : "Play"} the writing`;
 };
 pause.addEventListener("click", () => {

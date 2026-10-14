@@ -76,6 +76,24 @@ export const SETS: GlyphSet[] = [
   },
 ];
 
+// Pause and play, in a unit box centred on 0, 0.
+const ICONS: Record<string, string> = {
+  pause: "M-0.36 -0.4h0.25v0.8h-0.25zM0.11 -0.4h0.25v0.8h-0.25z",
+  play: "M-0.3 -0.42L0.42 0L-0.3 0.42z",
+};
+
+/** Draws the pause or play icon, about a capital's height. */
+export const drawIcon: Draw = (ctx, key, { width, height, size }) => {
+  const k = size * 0.44;
+  ctx.setTransform(
+    ctx
+      .getTransform()
+      .translate(width / 2, height / 2)
+      .scale(k, k),
+  );
+  ctx.fill(new Path2D(ICONS[key]));
+};
+
 /** What a glyph is, in words, for screen readers. */
 export const describe = (key: string) => key.split(/:(.*)/s)[1] ?? "";
 
