@@ -1,157 +1,186 @@
 # Ink pool
 
-A glyph transition: two glyphs blur together until their ink runs into one pool, a threshold keeps the pool's edge hard, and the next glyph firms up out of it as the old one sinks away.
+A glyph transition. Two glyphs blur into one pool of ink, a threshold keeps the edge sharp, and the next one firms up out of it.
 
-**[Try the playground →](https://ink-pool.jsfowles.com)**
+**[Play with it →](https://ink-pool.jsfowles.com)**
 
-This repo is the effect and a playground to tune it. The effect itself is one file, [`src/pool.ts`](src/pool.ts), with no dependencies. It draws with WebGL2 into a canvas.
+It's one file, [`src/pool.ts`](src/pool.ts), with no dependencies. It draws with WebGL2.
 
-## Install
+## Quick start
 
-Copy [`src/pool.ts`](src/pool.ts) into your project. That's all; the playground's **Copy pool.ts** copies the same file.
+Copy [`src/pool.ts`](src/pool.ts) into your project, or hit **Copy pool.ts** in the playground.
 
-## Use
+Give it an element. The CSS on that element sets the size, font and color:
 
-Give `inkPool` an element and a settings object, then show it glyphs. Each new one pools in from the last.
+```html
+<div class="glyph"></div>
+```
+
+```css
+.glyph {
+  width: 600px; /* leave room for the ink to spread, */
+  height: 500px; /* about 2× the font size wide and 1.7× tall */
+  font:
+    700 300px/1 "Poppins",
+    sans-serif;
+  color: #111;
+}
+```
+
+Then show it something:
 
 ```ts
 import { inkPool, DEFAULTS } from "./pool";
 
 const pool = inkPool(document.querySelector<HTMLElement>(".glyph")!, DEFAULTS);
 
-document.fonts.ready.then(() => pool.show("A"));
-
-// Later:
+pool.show("A");
 pool.show("B"); // A pools into B
 ```
 
-The canvas fills the element, and the element sets the look:
+That's it. The rest is optional.
 
-- **Size.** The glyph is drawn at the element's `font-size`, centred, in its font family and weight.
-- **Colour.** The ink is the element's `color`. After a theme change, call `pool.set(settings)` and it picks the colour up again.
-- **Room.** Every length is a share of the font size (em), and the ink spreads and sinks past the glyph's own outline. Leave the element room around it; the playground's is twice the glyph's size wide and 1.7 times tall.
+## Recipes
 
-A few more things worth knowing:
-
-- **Wait for your fonts.** Glyphs are drawn once into a texture. Ones drawn before their font arrived are redrawn when it loads, but the first frame looks better with it already there.
-- **Queueing.** Glyphs shown faster than a morph wait their turn, and a backlog plays quicker, down to about a third of `duration`, so it keeps up. `show(key, { replace: true })` drops whatever was waiting, so the new glyph is next and runs at full length.
-- **Your own settings.** Tune the pool in the playground, then use **Copy settings** to get them as code. It copies only what differs from the defaults, as `{ ...DEFAULTS, spread: 0.1 }`, ready to pass to `inkPool` or `pool.set`.
-- **Clean up.** `pool.teardown()` stops the frame loop and its observers and removes the canvas.
-
-### Hold a moment
-
-`hold` freezes the morph at one of its phases, gliding there, so you can see or show a single moment of it. While held, each glyph you show morphs to that same point and stops.
+### Cycle through words
 
 ```ts
-pool.hold("pooled"); // one pool of ink, at its widest
-pool.hold(0.3); // or any point from 0 to 1
-pool.hold(null); // lets it finish
+const words = ["INK", "POOL", "MELT"];
+let i = 0;
+pool.show(words[0]);
+setInterval(() => pool.show(words[++i % words.length]), 2500);
 ```
 
-The phases, in order, are `start`, `melting`, `pooled`, `forming` and `settled`.
+Keep the interval longer than `duration` (950ms) so each one gets a moment to sit.
 
-### Options
+### Your own settings
 
-A third argument takes options:
+Tune it in the playground, open **Settings** and hit **Copy settings**. You only get what you changed:
 
 ```ts
-const pool = inkPool(el, DEFAULTS, {
-  draw, // draws a glyph from its key; by default the text, wrapped if long
-  onPhase: (phase) => {}, // as the morph passes from phase to phase
-  onProgress: (t) => {}, // each frame, how far the morph has got, 0 to 1
-  queue: 3, // how many glyphs may wait; 0 cuts a morph short instead
-});
+const pool = inkPool(el, { ...DEFAULTS, spread: 0.1, sink: 12 });
 ```
 
-### Glyphs that aren't text
+`pool.set()` changes them later, even mid-morph.
 
-By default a glyph's key is the text it draws. Pass `draw` to draw anything else into the 2D canvas the pool keeps for each glyph, centred, in any opaque colour. The pool inks it in the element's colour.
-
-```ts
-import type { Draw } from "./pool";
-
-const draw: Draw = (ctx, key, { width, height, size, font }) => {
-  if (key === "dot") {
-    ctx.beginPath();
-    ctx.arc(width / 2, height / 2, size * 0.4, 0, Math.PI * 2);
-    ctx.fill();
-    return;
-  }
-  ctx.font = font;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(key, width / 2, height / 2);
-};
-```
-
-### Sentences and paragraphs
-
-Show a sentence or a paragraph like any glyph:
+### Sentences
 
 ```ts
 pool.show("Ink runs into ink");
 ```
 
-Text too wide for the stage wraps into lines and shrinks until it fits, no taller than one glyph. The spread, sink, rise and resting blur shrink with it, so small text pools the way a big letter does instead of dissolving. With your own `draw`, return the share of `size` you drew at for the same scaling.
+Long text wraps and shrinks to fit, and the effect scales down with it. Give paragraphs time to be read before you swap them.
 
-- **Give it time.** A paragraph takes a while to read; leave it up longer the more words it has.
-- **Say it too.** The canvas is hidden from screen readers, so put the text somewhere they can read it.
+### Freeze it
+
+```ts
+pool.hold("pooled"); // stops at the goopy middle
+pool.hold(null); // lets it finish
+```
+
+The stops are `start`, `melting`, `pooled`, `forming` and `settled`, or any number from 0 to 1.
+
+### Dark mode
+
+The ink is the element's `color`. If that changes, call `pool.set(DEFAULTS)` (or your settings) so it notices.
+
+### Shapes
+
+Pass `draw` to draw anything. Draw it in any color, the pool inks it.
+
+```ts
+import { inkPool, DEFAULTS, type Draw } from "./pool";
+
+const draw: Draw = (ctx, key, { width, height, size }) => {
+  ctx.beginPath();
+  ctx.arc(
+    width / 2,
+    height / 2,
+    size * (key === "big" ? 0.45 : 0.2),
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+};
+
+const pool = inkPool(el, DEFAULTS, { draw });
+pool.show("small");
+pool.show("big");
+```
+
+If you draw something smaller than `size`, return how much smaller (`0.5`, say) and the effect scales to match.
+
+### React
+
+```tsx
+import { useEffect, useRef } from "react";
+import { inkPool, DEFAULTS } from "./pool";
+
+export const InkGlyph = ({ text }: { text: string }) => {
+  const el = useRef<HTMLDivElement>(null);
+  const pool = useRef<ReturnType<typeof inkPool> | null>(null);
+
+  useEffect(() => {
+    pool.current = inkPool(el.current!, DEFAULTS);
+    return () => pool.current?.teardown();
+  }, []);
+
+  useEffect(() => pool.current?.show(text), [text]);
+
+  return <div ref={el} className="glyph" role="img" aria-label={text} />;
+};
+```
+
+Same idea anywhere else: make it once, `show` when it changes, `teardown` when it goes away.
+
+## API
+
+| Call                             | Does                                                       |
+| -------------------------------- | ---------------------------------------------------------- |
+| `inkPool(el, settings, options)` | Starts a pool in `el`. Both after `el` are optional.       |
+| `pool.show(glyph)`               | Shows a glyph. If one's still morphing, it waits its turn. |
+| `pool.show(glyph, { replace })`  | Skips the line: anything waiting gets dropped.             |
+| `pool.hold(stop)`                | Freezes it at a stop. `null` lets go.                      |
+| `pool.set(settings)`             | New settings, and it rereads the color.                    |
+| `pool.teardown()`                | Stops it and removes the canvas.                           |
+
+Options: `draw` (above), `queue` (how many glyphs can wait, `3` by default), and `onPhase` / `onProgress` if you want to follow along.
 
 ## Settings
 
-Ranges are the ones the playground offers; values outside them work too.
+| Setting     | Default | Range      | Does                                        |
+| ----------- | ------- | ---------- | ------------------------------------------- |
+| `duration`  | `950`   | 150–3000ms | How long a morph takes.                     |
+| `spread`    | `0.05`  | 0–0.15em   | How far the ink spreads.                    |
+| `sink`      | `7`     | 0–30%      | How far the old glyph drops on the way out. |
+| `rise`      | `4`     | 0–30%      | How far above its spot the new one starts.  |
+| `hardness`  | `24`    | 1–60       | How sharp the edge is. Low gets smoky.      |
+| `threshold` | `0.42`  | 0.1–0.9    | Where the edge falls. Lower is bolder.      |
+| `rest`      | `0`     | 0–0.04em   | Blur when it's sitting still.               |
+| `opacity`   | `1`     | 0.02–1     | Overall opacity.                            |
+| `fadeStart` | `100`   | 0–100%     | Fades out downward from here. `100` is off. |
+| `fadeEnd`   | `100`   | 0–100%     | Gone by here.                               |
+| `breathe`   | `0`     | 0–6s       | A slow pulse at rest. `0` is off.           |
 
-| Setting     | Default | Range         | What it does                                                                     |
-| ----------- | ------- | ------------- | -------------------------------------------------------------------------------- |
-| `duration`  | `950`   | 150–3000 (ms) | One morph.                                                                       |
-| `spread`    | `0.05`  | 0–0.15 (em)   | How far the ink spreads at the morph's height.                                   |
-| `sink`      | `7`     | 0–30 (%)      | How far the old glyph sinks as it goes, as a share of the glyph's size.          |
-| `rise`      | `4`     | 0–30 (%)      | How far above its place the new glyph starts.                                    |
-| `hardness`  | `24`    | 1–60          | How sharply the threshold cuts the pool's edge. Low values leave smoke.          |
-| `threshold` | `0.42`  | 0.1–0.9       | Where the cut falls, as a share of the ink's density. Lower is bolder.           |
-| `rest`      | `0`     | 0–0.04 (em)   | Softness at rest: a blur over the whole glyph.                                   |
-| `opacity`   | `1`     | 0.02–1        | The glyph's opacity, as a whole.                                                 |
-| `fadeStart` | `100`   | 0–100 (%)     | A fade downward: solid down to here, from the top. `100` is no fade.             |
-| `fadeEnd`   | `100`   | 0–100 (%)     | Gone by here, further down than `fadeStart`.                                     |
-| `breathe`   | `0`     | 0–6 (s)       | A slow pulse at rest, one breath in seconds, down to 40% opacity. `0` is off.    |
-
-The playground's presets show what they do together:
-
-- **Glass**: the defaults, full ink and no blur at rest.
-- **Backdrop**: half strength behind your copy, fading down and breathing.
-- **Syrup**: slow and heavy, one big round pool.
-- **Snap**: nearly a cut; it barely pools.
-- **Mercury**: strands snap into hard, bright beads.
-- **Smoke**: a soft edge that drifts.
+The playground's presets are good starting points: **Glass** (the defaults), **Backdrop** (faint, fading, breathing, for behind copy), **Syrup** (slow and heavy), **Snap** (barely pools), **Mercury** (hard beads) and **Smoke** (soft and drifty).
 
 ## Good to know
 
-- **Reduced motion.** The pool checks `prefers-reduced-motion` for you: each glyph simply replaces the last, and the breath stays still. A hold still works, so you can show a single moment.
-- **Screen readers.** The canvas is hidden from them. Say what the glyph is somewhere they can read it; the playground keeps a polite live region.
-- **Without WebGL2.** The pool falls back to a plain 2D canvas that shows each glyph at rest, with no morph.
-- **Cost.** It draws only while a morph runs, then stops, on a canvas capped at twice the screen's pixel density. The spread runs at a fraction of that size, so a wide spread costs about the same as a narrow one.
-- **Browsers.** Built and tested in Chromium. Check Safari and Firefox with your own glyphs and settings.
+- Reduced motion is handled for you. Glyphs just swap.
+- The canvas is hidden from screen readers, so label the element.
+- No WebGL2? It still shows the glyph, it just won't morph.
+- It only draws while something's moving.
+- I've mostly tested it in Chrome. Safari and Firefox should be fine, but check.
 
 ## The playground
 
 ```bash
 npm install
 npm run dev
-npm run check   # typecheck and formatting
-npm run build
 ```
 
-The playground is an [Astro](https://astro.build) page that builds to static HTML. Type to write a glyph, Enter to write the whole line (a word, a sentence or a pasted paragraph), the arrow keys to step through a set, and pick a phase to hold the morph there. Left alone it writes on its own, touring the sets and presets; Pause stops it.
+It's an Astro page. Type to write, Enter for the whole line, arrow keys to step through a set. `npm run check` typechecks and formats. The effect is `src/pool.ts`, everything else is the playground.
 
-- `src/pool.ts`: the effect.
-- `src/pages/index.astro`: the page, with `src/components/` for the presets, the settings sheet and the text that inverts over the ink.
-- `src/main.ts`: starts the playground: the glyph sets, the writing line, the phases and the theme.
-- `src/glyphs.ts`: the glyph sets and how words, sentences and shapes are drawn.
-- `src/ledger.ts`, `src/controls.ts`, `src/presets.ts`: the settings sheet, its controls and its presets.
-- `src/ink.ts`: the inverting text and the ink dots that mark what's chosen.
-- `src/fog.ts`: the drifting fog behind the glass.
-- `src/styles/`: the global styles (tokens, fonts, reset, sliders, the page) and the layout mixins.
+## License
 
-## Licence
-
-MIT, see [LICENSE](LICENSE). The fonts in `public/fonts`, Poppins and DM Mono, are under the SIL Open Font License.
+MIT. Poppins and DM Mono are under the SIL Open Font License.
