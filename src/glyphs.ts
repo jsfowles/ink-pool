@@ -84,7 +84,7 @@ const ICONS: Record<string, string> = {
 
 /** Draws the pause or play icon, about a capital's height. */
 export const drawIcon: Draw = (ctx, key, { width, height, size }) => {
-  const k = size * 0.44;
+  const k = size * 0.52;
   ctx.setTransform(
     ctx
       .getTransform()
