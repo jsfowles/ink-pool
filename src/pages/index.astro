@@ -15,6 +15,21 @@ const phases = [
   ["forming", "The new glyph sharpens out of the pool."],
   ["settled", "The new glyph, at rest. Lets a hold go."],
 ];
+// Each phase as two drops, the old glyph's and the new one's: their radii and
+// the gap between their centres, in a 64 by 36 box. Each pair is centred on its
+// ink, so the dot under it sits under the drops.
+const drops = [
+  [10.4, 3.6, 31],
+  [9.8, 6.8, 23],
+  [9.4, 9.4, 13.6],
+  [5.9, 10.3, 21],
+  [0, 10.4, 29],
+].map(([old, next, gap]) => {
+  const left = old ? -gap / 2 - old : gap / 2 - next;
+  const right = gap / 2 + next;
+  const x = 32 - (left + right) / 2;
+  return { old, next, a: x - gap / 2, b: x + gap / 2 };
+});
 ---
 
 <!doctype html>
@@ -31,6 +46,7 @@ const phases = [
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="Docs" />
     <meta name="description" content={description} />
     <link
       rel="preload"
@@ -66,6 +82,10 @@ const phases = [
         Or type a key. The arrow keys step through the set.
       </p>
       <p class="sr-only" id="now" aria-live="polite"></p>
+      <p class="sr-only">
+        To use it in your own project, copy <a href="/pool.ts">pool.ts</a>
+        and read <a href="/llms-full.txt">the docs</a>.
+      </p>
     </main>
 
     <header class="top">
@@ -112,11 +132,18 @@ const phases = [
 
     <Presets />
 
+    <svg class="sr-only" aria-hidden="true">
+      <filter id="goo">
+        <feGaussianBlur stdDeviation="2.4" />
+        <feColorMatrix values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 7 -3" />
+      </filter>
+    </svg>
+
     <nav class="phases" aria-label="Hold the morph at">
       <div class="rail">
         <span class="phase-mark" id="phase-mark" aria-hidden="true"></span>
         <ol id="phases">
-          {phases.map(([p, note]) => (
+          {phases.map(([p, note], i) => (
             <li data-phase={p}>
               <button
                 type="button"
@@ -125,7 +152,15 @@ const phases = [
                 aria-pressed="false"
                 aria-description={note}
               >
-                <Ink text={p} />
+                <svg class="drops" viewBox="0 0 64 36" aria-hidden="true">
+                  <g filter="url(#goo)">
+                    {drops[i].old > 0 && (
+                      <circle cx={drops[i].a} cy="18" r={drops[i].old} />
+                    )}
+                    <circle cx={drops[i].b} cy="18" r={drops[i].next} />
+                  </g>
+                </svg>
+                <span class="sr-only">{p}</span>
               </button>
             </li>
           ))}

@@ -234,13 +234,11 @@
     gap: 4px 26px;
   }
 
-  // Over a letter's box.
+  // Upright, under the name, as on a wide screen.
   @include portrait {
     position: absolute;
+    top: 46px;
     left: 0;
-    right: 0;
-    bottom: calc(100dvh - var(--glyph-y) + 0.38 * var(--glyph) + var(--gap));
-    justify-content: center;
   }
 
   button {
@@ -361,6 +359,10 @@
   :is(.top-nav, .sets, .presets, .phases) :is(a, button):hover {
     --tone: var(--tone-full);
   }
+
+  .phases button:hover .drops {
+    opacity: 1;
+  }
 }
 
 .sets-mark,
@@ -447,8 +449,22 @@
 .presets {
   left: var(--edge-left);
 
+  // Upright, two columns at the foot, the chosen one's note beside them.
   @include portrait {
+    top: auto;
+    bottom: calc(var(--inset) + env(safe-area-inset-bottom));
     right: var(--edge-right);
+
+    .rail ul {
+      display: grid;
+      grid-template-columns: repeat(2, max-content);
+      justify-content: start;
+      gap: 0 34px;
+    }
+
+    button {
+      font-size: 0.9375rem;
+    }
   }
 
   ul {
@@ -470,15 +486,34 @@
   left: 0;
 }
 
+.preset-now {
+  display: none;
+  font-size: var(--text-small);
+  text-align: right;
+  --tone: var(--text-muted);
+
+  @include portrait {
+    display: block;
+    position: absolute;
+    right: 0;
+    bottom: 6px;
+    width: 44%;
+  }
+}
+
 .phases {
   right: var(--edge-right);
 
-  // A row under the presets.
   @include portrait {
     top: calc(
-      var(--glyph-y) + 0.38 * var(--glyph) + var(--gap) + var(--row) + 8px
+      var(--ink-bottom, calc(var(--glyph-y) + 0.38 * var(--glyph))) +
+        var(--gap) - 8px
     );
     left: var(--edge-left);
+
+    @media (prefers-reduced-motion: no-preference) {
+      transition: top 500ms var(--ease-out);
+    }
   }
 
   ol {
@@ -487,16 +522,23 @@
   }
 
   button {
-    padding: 6px 0;
-    --tone: color-mix(
-      in oklab,
-      var(--tone-full) calc(var(--near, 0) * 100%),
-      var(--text-faint)
-    );
+    padding: 3px 0;
   }
 
-  button[aria-pressed="true"] {
-    --tone: var(--tone-full);
+  // White by difference, like the dots: dark on the fog, light over the glyph.
+  // Brighter as the morph passes.
+  .drops {
+    display: block;
+    width: 56px;
+    fill: #fff;
+    mix-blend-mode: difference;
+    opacity: calc(0.42 + 0.58 * var(--near, 0));
+    will-change: transform;
+    transition: opacity 150ms var(--ease-out);
+  }
+
+  [aria-pressed="true"] .drops {
+    opacity: 1;
   }
 
   // Moved by `right`, not a transform, which would cut its blend.
@@ -527,9 +569,8 @@
   }
 }
 
-// Upright, the sheet covers these or the glyph rises past them: hidden once
-// it lands, out of the tab order.
-[data-ledger="open"] :is(.sets, .presets, .phases) {
+// Upright, the sheet covers these: hidden once it lands, out of the tab order.
+[data-ledger="open"] :is(.presets, .phases) {
   @include portrait {
     visibility: hidden;
     transition: visibility 0s var(--duration-sheet-in);

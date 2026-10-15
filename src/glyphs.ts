@@ -16,11 +16,6 @@ const paths = new Map<string, Path2D>();
 // A sentence's line height, in its own font size.
 const LEAD = 1.08;
 
-// The band a sentence fits in, top and bottom in the stage's px, clear of
-// whatever lies over the glyph; the whole stage until the page says.
-let band: () => { top: number; bottom: number } | null = () => null;
-export const setBand = (measure: typeof band) => (band = measure);
-
 export type GlyphSet = { id: string; label: string; keys: string[] };
 
 export const SETS: GlyphSet[] = [
@@ -94,11 +89,19 @@ export const drawIcon: Draw = (ctx, key, { width, height, size }) => {
   ctx.fill(new Path2D(ICONS[key]));
 };
 
+// Where each glyph's ink ends, in the stage's px, as last drawn.
+const bottoms = new Map<string, number>();
+export const inkBottom = (key: string) => bottoms.get(key);
+
 /** What a glyph is, in words, for screen readers. */
 export const describe = (key: string) => key.split(/:(.*)/s)[1] ?? "";
 
 /** Draws a glyph into the pool's canvas, centred, at the stage's size. */
-export const draw: Draw = (ctx, key, { width, height, size, font }) => {
+export const draw: Draw = (
+  ctx,
+  key,
+  { width, height, size, font, room: free },
+) => {
   const [kind, value = ""] = key.split(/:(.*)/s);
   const cx = width / 2;
   const cy = height / 2;
@@ -110,6 +113,8 @@ export const draw: Draw = (ctx, key, { width, height, size, font }) => {
     const k = (size * 1.2) / 200;
     ctx.setTransform(ctx.getTransform().translate(cx, cy).scale(k, k));
     ctx.fill(path, "evenodd");
+    // The shapes reach about 70 units below their centre.
+    bottoms.set(key, cy + 70 * k);
     return;
   }
   ctx.font = font;
@@ -137,7 +142,9 @@ export const draw: Draw = (ctx, key, { width, height, size, font }) => {
     const wide = ctx.measureText(value).width;
     const px = wide > room ? (max * room) / wide : max;
     set(px);
-    ctx.fillText(value, cx, cy + lift(value));
+    const y = cy + lift(value);
+    ctx.fillText(value, cx, y);
+    bottoms.set(key, y + ctx.measureText(value).actualBoundingBoxDescent);
     return px / max;
   }
   const lines = (w: number) => {
@@ -149,7 +156,6 @@ export const draw: Draw = (ctx, key, { width, height, size, font }) => {
     }
     return out;
   };
-  const free = band();
   const tall = Math.min(size * 0.85, free ? free.bottom - free.top : size);
   const fits = (px: number) => {
     set(px);
@@ -177,7 +183,7 @@ export const draw: Draw = (ctx, key, { width, height, size, font }) => {
     else narrow = mid;
   }
   const rows = lines(wide);
-  // Centred on the capitals' ink, inside the free band.
+  // Centred on the capitals' ink, inside the free room.
   const block = rows.length * lo * LEAD;
   const middle =
     (free
@@ -185,5 +191,10 @@ export const draw: Draw = (ctx, key, { width, height, size, font }) => {
       : cy) + lift("H");
   for (const [i, row] of rows.entries())
     ctx.fillText(row, cx, middle + (i - (rows.length - 1) / 2) * lo * LEAD);
+  const last = middle + ((rows.length - 1) / 2) * lo * LEAD;
+  bottoms.set(
+    key,
+    last + ctx.measureText(rows.at(-1)!).actualBoundingBoxDescent,
+  );
   return lo / max;
 };

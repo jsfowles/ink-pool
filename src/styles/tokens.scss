@@ -51,23 +51,21 @@
     --edge: 48px;
   }
 
-  // Upright, one stack centred under the header (34px): the sets, a letter's
-  // box, and the two rows, a gap apart. A letter stands about 0.76em tall and
-  // 0.62em wide.
+  // Upright: the name and the sets above (84px), the presets at the foot
+  // (three rows), and centred between them the glyph with its phases. A letter
+  // stands about 0.76em tall and 0.62em wide.
   @include portrait {
     --gap: 24px;
+    --head: 84px;
     --room: calc(
-      100dvh - 2 * var(--inset) -
-        34px - env(safe-area-inset-top) - env(safe-area-inset-bottom)
+      100dvh - 2 * var(--inset) - var(--head) - 3 *
+        var(--row) - env(safe-area-inset-top) - env(safe-area-inset-bottom)
     );
     --glyph: min(118vw, 0.6 * var(--room));
-    --stack: calc(
-      38px + 2 * var(--gap) + 0.76 * var(--glyph) + 2 * var(--row) + 8px
-    );
+    --stack: calc(0.76 * var(--glyph) + var(--gap) + var(--row));
     --glyph-y: calc(
-      var(--inset) + 34px + env(safe-area-inset-top) +
-        (var(--room) - var(--stack)) / 2 + 38px + var(--gap) + 0.38 *
-        var(--glyph)
+      var(--inset) + var(--head) + env(safe-area-inset-top) +
+        (var(--room) - var(--stack)) / 2 + 0.38 * var(--glyph)
     );
   }
 

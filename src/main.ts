@@ -1,8 +1,8 @@
 import { paintFog } from "./fog";
-import { describe, draw, drawIcon, setBand, SETS } from "./glyphs";
+import { describe, draw, drawIcon, inkBottom, SETS } from "./glyphs";
 import { startLedger } from "./ledger";
 import { inkMark, inkRun, inkSwap, inkText, RUN } from "./ink";
-import { DEFAULTS, inkPool, PHASES, type Phase, type Settings } from "./pool";
+import { inkPool, PHASES, type Phase } from "./pool";
 import source from "./pool.ts?raw";
 
 const $ = <T extends HTMLElement>(id: string) =>
@@ -108,57 +108,43 @@ const explain = (name?: string) => {
   );
 };
 
-// A sentence sits between the sets and whatever lies under the glyph:
-// upright, the presets. Measured from the glyph's untransformed box, so an
-// open sheet doesn't skew it.
-setBand(() => {
+// The glyph's untransformed top on the page, so an open sheet doesn't skew
+// what's measured from it.
+const glyphTop = () => {
   const ink = $("ink");
-  const stage = ink.parentElement!.getBoundingClientRect();
-  const top = stage.top + ink.offsetTop;
-  const left = stage.left + ink.offsetLeft;
-  const over = (r: DOMRect) =>
+  return ink.parentElement!.getBoundingClientRect().top + ink.offsetTop;
+};
+// A sentence sits between the sets and whatever lies under the glyph:
+// upright, the presets, with room above them for the phases to hang.
+const room = () => {
+  const ink = $("ink");
+  const top = glyphTop();
+  const left = ink.parentElement!.getBoundingClientRect().left + ink.offsetLeft;
+  const r = document.querySelector(".presets .rail")!.getBoundingClientRect();
+  const over =
     r.right > left + ink.offsetWidth * 0.2 &&
     r.left < left + ink.offsetWidth * 0.8;
-  let bottom = innerHeight;
-  for (const el of document.querySelectorAll(".presets .rail")) {
-    const r = el.getBoundingClientRect();
-    if (over(r)) bottom = Math.min(bottom, r.top - 16);
-  }
+  const bottom = over ? r.top - 28 - $("phases").offsetHeight : innerHeight;
   const head = $("sets").getBoundingClientRect().bottom;
   return { top: head + 16 - top, bottom: bottom - top };
-});
-const pool = inkPool($("pool"), undefined, {
-  draw,
-  onProgress: showProgress,
-});
-// A preset eases in over this long, from wherever the settings were. Its
-// duration and breathe change at once: the morph and the breath take them up.
-const EASE = 600;
-let shown: Settings | null = null;
-let easing = 0;
-const apply = (to: Settings, ease = false) => {
-  cancelAnimationFrame(easing);
-  const from = shown;
-  if (!ease || !from || reduced.matches) {
-    pool.set((shown = to));
-    return;
-  }
-  const begun = performance.now();
-  const run = (now: number) => {
-    const k = 1 - (1 - Math.min((now - begun) / EASE, 1)) ** 3;
-    const mixed = { ...to };
-    for (const key of Object.keys(to) as (keyof Settings)[])
-      if (key !== "duration" && key !== "breathe")
-        mixed[key] = from[key] + (to[key] - from[key]) * k;
-    pool.set((shown = mixed));
-    if (k < 1) easing = requestAnimationFrame(run);
-  };
-  easing = requestAnimationFrame(run);
 };
+const pool = inkPool(
+  $("pool"),
+  {},
+  {
+    draw,
+    room,
+    onProgress: (t) => {
+      showProgress(t);
+      hang();
+    },
+  },
+);
 let touring = true;
 let tourStep = false;
 const ledger = startLedger((settings, { live, preset }) => {
-  apply(settings, preset);
+  // A preset eases in; a slider follows the hand.
+  pool.set(settings, { ease: preset ? 600 : 0 });
   if (!tourStep) touring = false;
   // Letting go of a slider or choosing a preset writes the next glyph. A
   // preset also lets go of a hold; a slider keeps it, to tune the held frame.
@@ -167,7 +153,7 @@ const ledger = startLedger((settings, { live, preset }) => {
   next();
   keepWriting();
 }, source);
-apply(ledger.settings());
+pool.set(ledger.settings(), { ease: 0 });
 
 let set = 0;
 let at = 0;
@@ -178,11 +164,29 @@ const now = $("now");
 
 // Typed glyphs queue so each finishes; the page's own replace the queue.
 let last = "";
+let settled = Promise.resolve(true);
 const write = (key: string, announce = false, replace = false) => {
   last = key;
   if (announce) now.textContent = describe(key);
-  pool.show(key, { replace });
+  settled = pool.show(key, { replace });
 };
+// Upright, the phases hang just under the glyph's ink, moving when it does.
+let hung = "";
+function hang() {
+  const bottom = inkBottom(last);
+  if (bottom === undefined) return;
+  const at = `${last}@${bottom}`;
+  if (at === hung) return;
+  hung = at;
+  root.style.setProperty(
+    "--ink-bottom",
+    `${Math.round(glyphTop() + bottom)}px`,
+  );
+}
+addEventListener("resize", () => {
+  hung = "";
+  hang();
+});
 const choose = (index: number) => {
   set = index;
   for (const [i, b] of setButtons.entries())
@@ -214,11 +218,15 @@ let timer = 0;
 const touched = () => (quietUntil = performance.now() + IDLE);
 const reading = () =>
   last.startsWith("line:") ? last.split(/\s+/).length * READ : 0;
+// Each glyph sits this long once it settles, then the next is written.
+let writing = 0;
 const keepWriting = () => {
   clearTimeout(timer);
-  const writes = $<HTMLInputElement>("auto").checked && !reduced.matches;
-  timer = setTimeout(
-    () => {
+  const run = ++writing;
+  void settled.then(() => {
+    if (run !== writing) return;
+    timer = setTimeout(() => {
+      const writes = $<HTMLInputElement>("auto").checked && !reduced.matches;
       const free = performance.now() > quietUntil && !root.dataset.held;
       if (writes && free && !document.hidden) {
         // Every third glyph, the next preset (which writes one itself).
@@ -231,15 +239,14 @@ const keepWriting = () => {
         next();
       }
       keepWriting();
-    },
-    ledger.settings().duration + PAUSE + reading(),
-  );
+    }, PAUSE + reading());
+  });
 };
 // Pause in the header and the switch in the settings are one control.
 const auto = $<HTMLInputElement>("auto");
 const pause = $<HTMLButtonElement>("pause");
 // Its icon pools from one to the other, on the Glass preset.
-const icon = inkPool($("pause-icon"), DEFAULTS, { draw: drawIcon, queue: 0 });
+const icon = inkPool($("pause-icon"), {}, { draw: drawIcon, queue: 0 });
 const showPause = () => {
   icon.show(auto.checked ? "pause" : "play");
   pause.ariaLabel = `${auto.checked ? "Pause" : "Play"} the writing`;
@@ -325,7 +332,9 @@ const showTheme = () => {
     "content",
     getComputedStyle(root).getPropertyValue("--fog").trim(),
   );
-  apply(ledger.settings());
+  // The pool sees a new color on its own, but a beat late for the view
+  // transition's picture of the new glass.
+  pool.set({}, { ease: 0 });
 };
 const chosen = () => {
   try {
@@ -354,10 +363,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
 });
 showTheme();
 
-reduced.addEventListener("change", () => {
-  apply(ledger.settings());
-  keepWriting();
-});
+reduced.addEventListener("change", keepWriting);
 
 paintFog([...document.querySelectorAll<HTMLElement>(".fog")]);
 

@@ -83,6 +83,9 @@ export const startLedger = (onChange: Change, source: string) => {
       b.ariaPressed = String(
         !changes(settings, PRESETS[b.dataset.preset!].settings).length,
       );
+    // Upright, where there's no hover, the chosen preset says what it does.
+    const chosen = presets.find((b) => b.ariaPressed === "true");
+    inkSwap($("preset-now"), chosen?.dataset.note ?? "");
     // The fade's end only matters once it starts.
     form.querySelector<HTMLElement>('[data-field="fadeEnd"]')!.hidden =
       settings.fadeStart >= 100;
