@@ -8,6 +8,7 @@
 //   pool.hold("pooled");               // freezes at a phase or 0–1; null lets go
 //   pool.set({ sink: 12 });            // eases to new settings; { ease: 0 } snaps
 //   pool.set({ turn: 1 });             // turns it to run up the page
+//   pool.phases();                     // where each phase falls, as shares
 //   pool.teardown();
 //
 // Options: draw (your own glyphs), queue (how many may wait, 3; 0 cuts short),
