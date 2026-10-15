@@ -50,6 +50,7 @@ export const startLedger = (onChange: Change, source: string) => {
   let base = PRESETS[baseName].settings;
   let settings = { ...base };
   let opener: HTMLElement | null = null;
+  let shown = false;
 
   // The "was 0.05em" button beside a changed value, which resets it.
   const mark = (key: Key) => {
@@ -83,9 +84,11 @@ export const startLedger = (onChange: Change, source: string) => {
       b.ariaPressed = String(
         !changes(settings, PRESETS[b.dataset.preset!].settings).length,
       );
-    // Upright, where there's no hover, the chosen preset says what it does.
+    // Upright, where there's no hover, the chosen preset says what it does:
+    // first without a fade, which would show it before the page inks in.
     const chosen = presets.find((b) => b.ariaPressed === "true");
-    inkSwap($("preset-now"), chosen?.dataset.note ?? "");
+    (shown ? inkSwap : inkText)($("preset-now"), chosen?.dataset.note ?? "");
+    shown = true;
     // The fade's end only matters once it starts.
     form.querySelector<HTMLElement>('[data-field="fadeEnd"]')!.hidden =
       settings.fadeStart >= 100;

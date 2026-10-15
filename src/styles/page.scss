@@ -607,6 +607,11 @@
     @media (prefers-reduced-motion: no-preference) {
       transition: top 500ms var(--ease-out);
     }
+
+    // Following a morph frame by frame, it needs no easing of its own.
+    &[data-following] {
+      transition: none;
+    }
   }
 
   ol {

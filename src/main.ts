@@ -2,7 +2,7 @@ import { paintFog } from "./fog";
 import { describe, draw, drawIcon, inkBottom, SETS } from "./glyphs";
 import { startLedger } from "./ledger";
 import { createArrange } from "./arrange";
-import { inkDot, inkRun, inkSwap, inkText, RUN } from "./ink";
+import { inkDot, inkSwap, inkText } from "./ink";
 import { inkPool, type Phase } from "./pool";
 import source from "./pool.ts?raw";
 
@@ -24,20 +24,17 @@ const phases = [...$("phases").querySelectorAll<HTMLElement>("[data-phase]")];
 const holds = [
   ...$("phases").querySelectorAll<HTMLButtonElement>("[data-hold]"),
 ];
-// The phase dot runs down the names with the morph, then back up to
-// "start" a beat after it settles. Each name brightens as it passes. It's on
-// a name while the pool's phases say so: leaving the start as the glyph starts
-// melting, and reaching "settled" as it settles, for the settings it has.
+// The phase dot runs down the names with the morph and rests on "settled"
+// with the glyph; the next morph inks it back in at the start. Each name
+// brightens as it passes. It's on a name while the pool's phases say so:
+// leaving the start as the glyph starts melting, and reaching "settled" as it
+// settles, for the settings it has.
 const stopsNow = () => {
   const { start, melting, pooled, forming } = pool.phases();
   return [start.until, melting.at, pooled.at, forming.at, forming.until];
 };
 const END = phases.length - 1;
-const BEAT = 600;
 const phaseDot = inkDot($("phase-mark"), holds);
-// It waits at the start until the first glyph is written.
-let parked = true;
-let parking = 0;
 const near: string[] = [];
 const moveDot = (at: number) => {
   phaseDot.to(at);
@@ -48,48 +45,21 @@ const moveDot = (at: number) => {
     li.style.setProperty("--near", n);
   }
 };
+// It waits at the start until the first glyph is written.
 moveDot(0);
-// Stretched like a drop over the run from one place to another.
-const pull = (from: number, to: number, move?: boolean) => {
-  const [x, y] = phaseDot.spot(from);
-  const [nx, ny] = phaseDot.spot(to);
-  inkRun(phaseDot.mark, nx - x, ny - y, move);
-};
 const showProgress = (t: number) => {
-  if (t >= 1) {
-    if (parked) return;
-    moveDot(END);
-    clearTimeout(parking);
-    parking = setTimeout(() => {
-      if (root.dataset.held) return;
-      parked = true;
-      const from = phaseDot.at;
-      if (reduced.matches) return moveDot(0);
-      pull(from, 0, false);
-      const begun = performance.now();
-      const run = (now: number) => {
-        if (!parked) return;
-        const k = Math.min((now - begun) / RUN, 1);
-        moveDot(from * (1 - k) ** 4);
-        if (k < 1) requestAnimationFrame(run);
-      };
-      requestAnimationFrame(run);
-    }, BEAT);
-    return;
-  }
-  clearTimeout(parking);
   const stops = stopsNow();
   const i = stops.findIndex((s) => t <= s);
   const from = Math.max(i - 1, 0);
   const span = stops[i] - stops[from];
   const at =
     i < 0 ? END : from + (i - from) * (span > 0 ? (t - stops[from]) / span : 1);
-  // A new morph before the dot got back up: it runs, not jumps.
-  const back = !parked && at < phaseDot.at - 0.01 && phaseDot.at === END;
-  const was = phaseDot.at;
-  parked = false;
+  if (phaseDot.at === END && at < END && !reduced.matches)
+    phaseDot.mark.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 240,
+      easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+    });
   moveDot(at);
-  if (back) pull(was, at);
 };
 const note = $("phase-note");
 const explain = (name?: string) => {
@@ -130,7 +100,7 @@ const pool = inkPool(
     room,
     onProgress: (t) => {
       if (!entering) showProgress(t);
-      hang();
+      hang(t);
     },
   },
 );
@@ -169,12 +139,15 @@ const now = $("now");
 
 // Typed glyphs queue so each finishes; the page's own replace the queue.
 let last = "";
+// The glyph before it, for what moves between the two.
+let was = "";
 let settled = Promise.resolve(true);
 // The first glyph inks in with the page, out of nothing; the timeline waits
 // at the start for the morph after it.
 let entering = true;
 const write = (key: string, announce = false, replace = false) => {
   if (last) entering = false;
+  was = last;
   last = key;
   if (announce) now.textContent = describe(key);
   settled = pool.show(key, { replace });
@@ -183,14 +156,11 @@ const write = (key: string, announce = false, replace = false) => {
 // Where the ink ends is found by drawing the glyph unseen at the glyph's own
 // size, so it's known before the pool has drawn it, even just as it turns.
 const sizer = document.createElement("canvas").getContext("2d")!;
-let hung = "";
-function hang(key = last) {
-  // Turned, they stand in a column beside it instead.
-  if (root.hasAttribute("data-turn")) return;
+const depths = new Map<string, number | undefined>();
+const depth = (key: string) => {
   const el = $("pool");
-  const at = `${key}@${el.clientWidth}x${el.clientHeight}`;
-  if (at === hung) return;
-  hung = at;
+  const id = `${key}@${el.clientWidth}x${el.clientHeight}`;
+  if (depths.has(id)) return depths.get(id);
   const style = getComputedStyle(el);
   const size = parseFloat(style.fontSize);
   const free = room();
@@ -203,9 +173,30 @@ function hang(key = last) {
       ? { top: Math.round(free.top), bottom: Math.round(free.bottom) }
       : undefined,
   });
-  const bottom = inkBottom(key);
-  if (bottom !== undefined)
-    root.style.setProperty("--ink-depth", `${Math.round(bottom)}px`);
+  depths.set(id, inkBottom(key));
+  return depths.get(id);
+};
+const smooth = (a: number, b: number, t: number) => {
+  const x = Math.min(Math.max((t - a) / (b - a || 1), 0), 1);
+  return x * x * (3 - 2 * x);
+};
+// Mid-morph they move as the glyph does: from under the old one as it starts
+// melting to under the new one as it settles.
+function hang(t = 1, key = last) {
+  // Turned, they stand in a column beside it instead.
+  if (root.hasAttribute("data-turn")) return;
+  const to = depth(key);
+  if (to === undefined) return;
+  const from = t < 1 ? (depth(was) ?? to) : to;
+  const { start, forming } = pool.phases();
+  const k = smooth(start.until, forming.until, t);
+  document
+    .querySelector("nav.phases")!
+    .toggleAttribute("data-following", t < 1);
+  root.style.setProperty(
+    "--ink-depth",
+    `${Math.round(from + (to - from) * k)}px`,
+  );
 }
 
 // The sets and presets dots keep to the pressed one.
@@ -235,8 +226,10 @@ const arrange = createArrange({
 // stand upright and the button has nothing to turn. The presets and phases sit
 // as they do across, except on a phone, where they stand in columns.
 const phone = matchMedia("(max-width: 699px)");
-let turning = false;
-const turnTo = () => {
+// A phone is taller than it is wide, so words start up the page there.
+let turning = phone.matches;
+// `instant` for the page's first layout, before it inks in.
+const turnTo = (instant = false) => {
   const upright = !["words", "lines"].includes(SETS[set].id);
   const columns = upright ? phone.matches : turning;
   turn.disabled = upright;
@@ -246,34 +239,40 @@ const turnTo = () => {
     : turning
       ? "Run the glyph across"
       : "Run the glyph vertically";
-  if (columns !== root.hasAttribute("data-turn"))
+  if (instant) {
+    const box = $("ink");
+    box.style.transition = "none";
+    root.toggleAttribute("data-turn", columns);
+    box.getBoundingClientRect();
+    box.style.transition = "";
+  } else if (columns !== root.hasAttribute("data-turn"))
     arrange(
       () => root.toggleAttribute("data-turn", columns),
       // Back to a row, the phases hang under the glyph now, so they glide there.
       () => {
-        hung = "";
+        depths.clear();
         hang();
       },
     );
   const next = turning && !upright ? 1 : 0;
   if (next === turned) return;
   turned = next;
-  pool.set({ turn: turned }, { ease: TURN });
+  pool.set({ turn: turned }, { ease: instant ? 0 : TURN });
 };
 turn.addEventListener("click", () => {
   turning = !turning;
   turnTo();
 });
-phone.addEventListener("change", turnTo);
+phone.addEventListener("change", () => turnTo());
 addEventListener("resize", () => {
-  hung = "";
+  depths.clear();
   hang();
 });
-const choose = (index: number) => {
+const choose = (index: number, instant = false) => {
   set = index;
   for (const [i, b] of setButtons.entries())
     b.ariaPressed = String(i === index);
-  turnTo();
+  turnTo(instant);
 };
 const step = (by: number, announce = false, replace = false) => {
   const keys = SETS[set].keys;
@@ -505,15 +504,13 @@ void Promise.race([
   document.fonts.load('700 1em "Poppins"'),
   new Promise((resolve) => setTimeout(resolve, 1500)),
 ]).then(() => {
-  choose(0);
+  choose(0, true);
   pool.show("");
   // The timeline hangs under the first glyph before it's written, so it
   // enters where it stays.
-  const timeline = $("phases");
-  timeline.style.transition = "none";
-  hang(SETS[0].keys[0]);
-  getComputedStyle(timeline).top;
-  timeline.style.transition = "";
+  hang(0, SETS[0].keys[0]);
+  getComputedStyle($("phases")).top;
+  hang(1, SETS[0].keys[0]);
   root.classList.add("ready");
   const entered = Promise.allSettled(
     document
