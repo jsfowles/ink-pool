@@ -22,22 +22,31 @@ const holds = [
   ...$("phases").querySelectorAll<HTMLButtonElement>("[data-hold]"),
 ];
 // The phase dot runs down the names with the morph, then back up to
-// "start" a beat after it settles.
+// "start" a beat after it settles. Upright, the names are a row, and it runs
+// along it.
 const mark = $("phase-mark");
 const stops = [...Object.values(PHASES).map((p) => p.at), 1];
 const BEAT = 600;
 let centres: number[] = [];
+let across = false;
 let lastY = 0;
 let parked = false;
 let parking = 0;
 const near: string[] = [];
 const measureStops = () => {
-  centres = phases.map((li) => li.offsetTop + li.offsetHeight / 2);
+  across = phases[0].offsetTop === phases[1].offsetTop;
+  centres = phases.map((li) =>
+    across
+      ? li.offsetLeft + li.offsetWidth / 2
+      : li.offsetTop + li.offsetHeight / 2,
+  );
 };
+const runMark = (by: number, move?: boolean) =>
+  across ? inkRun(mark, by, 0, move) : inkRun(mark, 0, by, move);
 const moveMark = (y: number) => {
   // By translate, apart from transform, so a run's stretch scales the dot
   // and never its distance down the list.
-  mark.style.translate = `0 ${y.toFixed(1)}px`;
+  mark.style.translate = across ? `${y.toFixed(1)}px 0` : `0 ${y.toFixed(1)}px`;
   lastY = y;
   const row = centres[1] - centres[0] || 1;
   for (const [i, li] of phases.entries()) {
@@ -59,7 +68,7 @@ const showProgress = (t: number) => {
       const from = lastY;
       const to = centres[0];
       if (reduced.matches) return moveMark(to);
-      inkRun(mark, 0, to - from, false);
+      runMark(to - from, false);
       const begun = performance.now();
       const run = (now: number) => {
         if (!parked) return;
@@ -85,7 +94,7 @@ const showProgress = (t: number) => {
   const was = lastY;
   parked = false;
   moveMark(y);
-  if (back) inkRun(mark, 0, y - was);
+  if (back) runMark(y - was);
 };
 new ResizeObserver(measureStops).observe($("phases"));
 
@@ -99,9 +108,9 @@ const explain = (name?: string) => {
   );
 };
 
-// A sentence sits between the header and whatever lies over the glyph's
-// foot: upright, the lists. Measured from the glyph's untransformed box, so
-// an open sheet doesn't skew it.
+// A sentence sits between the sets and whatever lies under the glyph:
+// upright, the presets. Measured from the glyph's untransformed box, so an
+// open sheet doesn't skew it.
 setBand(() => {
   const ink = $("ink");
   const stage = ink.parentElement!.getBoundingClientRect();
@@ -111,13 +120,11 @@ setBand(() => {
     r.right > left + ink.offsetWidth * 0.2 &&
     r.left < left + ink.offsetWidth * 0.8;
   let bottom = innerHeight;
-  for (const el of document.querySelectorAll(
-    ".presets .rail, .phases .rail, .write",
-  )) {
+  for (const el of document.querySelectorAll(".presets .rail")) {
     const r = el.getBoundingClientRect();
     if (over(r)) bottom = Math.min(bottom, r.top - 16);
   }
-  const head = document.querySelector(".top")!.getBoundingClientRect().bottom;
+  const head = $("sets").getBoundingClientRect().bottom;
   return { top: head + 16 - top, bottom: bottom - top };
 });
 const pool = inkPool($("pool"), undefined, {
@@ -161,10 +168,12 @@ inkMark($("sets-mark"), setButtons, (b) => [
   b.offsetLeft + b.offsetWidth / 2 - 2.5,
   b.offsetTop + b.offsetHeight - 5,
 ]);
-inkMark(
-  $("preset-mark"),
-  [...document.querySelectorAll<HTMLElement>("[data-preset]")],
-  (b) => [b.offsetLeft - 14, b.offsetTop + b.offsetHeight / 2 - 2.5],
+const presets = [...document.querySelectorAll<HTMLElement>("[data-preset]")];
+// Beside the name in a list, under it in a row.
+inkMark($("preset-mark"), presets, (b) =>
+  presets[0].offsetTop === presets[1].offsetTop
+    ? [b.offsetLeft + b.offsetWidth / 2 - 2.5, b.offsetTop + b.offsetHeight - 5]
+    : [b.offsetLeft - 14, b.offsetTop + b.offsetHeight / 2 - 2.5],
 );
 const step = (by: number, announce = false, replace = false) => {
   const keys = SETS[set].keys;
@@ -242,22 +251,16 @@ for (const b of holds) {
 
 $("ink").addEventListener("click", () => {
   touched();
-  stopDemo();
   step(1, true);
 });
 for (const [i, b] of setButtons.entries())
   b.addEventListener("click", () => {
-    stopDemo();
     quietUntil = 0;
     choose(i);
     at = 0;
     write(SETS[i].keys[0], true, true);
     keepWriting();
   });
-
-const form = $<HTMLFormElement>("write");
-const field = $<HTMLInputElement>("write-text");
-let typed = "";
 
 const writeChar = (char: string) => {
   const type = SETS.findIndex((s) => s.id === "type");
@@ -269,37 +272,6 @@ const writeChar = (char: string) => {
   write(`text:${char}`, true);
 };
 
-field.addEventListener("input", () => {
-  touched();
-  stopDemo();
-  const value = field.value;
-  form.toggleAttribute("data-word", [...value.trim()].length > 1);
-  // The key just typed, or after a delete, the last one left.
-  const grew = value.length > typed.length;
-  const char = grew
-    ? value.slice(0, field.selectionStart ?? value.length).slice(-1)
-    : value.slice(-1);
-  typed = value;
-  if (char.trim()) writeChar(char);
-});
-form.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const value = field.value.trim();
-  if (!value) return;
-  touched();
-  const kind = /\s/.test(value)
-    ? "line"
-    : [...value].length > 1
-      ? "word"
-      : "text";
-  write(`${kind}:${value}`, true);
-  field.value = typed = "";
-  form.removeAttribute("data-word");
-});
-field.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") field.blur();
-});
-
 const typing = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
   (target.matches("input, textarea, select") || target.isContentEditable);
@@ -309,64 +281,14 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
     e.preventDefault();
     touched();
-    stopDemo();
     step(e.key === "ArrowRight" ? 1 : -1, true);
     return;
   }
-  // Focused now, the field takes this very key.
-  if (e.key.length === 1 && e.key !== " ") field.focus({ preventScroll: true });
-});
-
-// First visit only: the line types a word by itself, to show that typing
-// is how you play.
-const SEEN = "ink-pool:wrote";
-let demo: number[] = [];
-const seen = () => {
-  try {
-    return localStorage.getItem(SEEN) === "1";
-  } catch {
-    return true;
-  }
-};
-const remember = () => {
-  try {
-    localStorage.setItem(SEEN, "1");
-  } catch {}
-};
-function stopDemo() {
-  if (!demo.length) return;
-  demo.forEach(clearTimeout);
-  demo = [];
-  if (!typed) field.value = "";
-  form.removeAttribute("data-word");
-  remember();
-}
-const playDemo = () => {
-  if (seen() || reduced.matches) return;
-  const word = "INK";
-  let t = 1800;
-  const later = (ms: number, fn: () => void) => {
-    t += ms;
-    demo.push(setTimeout(fn, t));
-  };
-  touched();
-  quietUntil = Infinity;
-  [...word].forEach((char, i) =>
-    later(i ? 900 : 0, () => {
-      field.value = word.slice(0, i + 1);
-      form.toggleAttribute("data-word", i > 0);
-      writeChar(char);
-    }),
-  );
-  later(1400, () => write(`word:${word}`));
-  later(2200, () => {
-    field.value = "";
-    form.removeAttribute("data-word");
-    demo = [];
-    remember();
+  if (e.key.length === 1 && e.key !== " ") {
     touched();
-  });
-};
+    writeChar(e.key);
+  }
+});
 
 const THEME = "ink-pool:theme";
 const themeButton = $<HTMLButtonElement>("theme");
@@ -425,5 +347,4 @@ void Promise.race([
   root.classList.add("ready");
   setTimeout(() => write(SETS[0].keys[0]), reduced.matches ? 0 : 450);
   keepWriting();
-  playDemo();
 });

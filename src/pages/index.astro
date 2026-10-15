@@ -63,7 +63,7 @@ const phases = [
         <span class="sr-only">Write the next glyph</span>
       </button>
       <p class="sr-only" id="ink-help">
-        Or type in the field below. The arrow keys step through the set.
+        Or type a key. The arrow keys step through the set.
       </p>
       <p class="sr-only" id="now" aria-live="polite"></p>
     </main>
@@ -115,9 +115,6 @@ const phases = [
     <nav class="phases" aria-label="Hold the morph at">
       <div class="rail">
         <span class="phase-mark" id="phase-mark" aria-hidden="true"></span>
-        <p class="rail-label" aria-hidden="true">
-          <Ink text="Phase" />
-        </p>
         <ol id="phases">
           {phases.map(([p, note]) => (
             <li data-phase={p}>
@@ -138,27 +135,6 @@ const phases = [
         </p>
       </div>
     </nav>
-
-    <footer class="foot">
-      <form class="write" id="write" autocomplete="off">
-        <label class="sr-only" for="write-text">
-          Write a glyph
-        </label>
-        <input
-          type="text"
-          id="write-text"
-          name="glyph"
-          maxlength="280"
-          spellcheck="false"
-          autocapitalize="off"
-          enterkeyhint="done"
-          placeholder="Type a letter, a word or a sentence…"
-        />
-        <span class="write-enter" aria-hidden="true">
-          Enter writes it whole
-        </span>
-      </form>
-    </footer>
 
     <Ledger />
 

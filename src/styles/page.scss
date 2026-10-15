@@ -46,12 +46,12 @@
   place-items: center;
   // Taller than its room upright; centred, it overflows both ways evenly.
   place-content: center;
-  padding-bottom: 8vh;
+  // Its middle where capitals' ink used to sit: 8vh up, and a little more.
+  padding-bottom: calc(8vh + 0.13 * var(--glyph));
 
   @include portrait {
-    container-type: size;
-    padding: calc(var(--edge) + 72px + env(safe-area-inset-top)) 0
-      calc(76px + env(safe-area-inset-bottom));
+    padding: max(0px, 2 * var(--glyph-y) - 100dvh) 0
+      max(0px, 100dvh - 2 * var(--glyph-y));
   }
 }
 
@@ -69,11 +69,6 @@
   transition:
     translate var(--duration-sheet-out) var(--ease-out),
     scale var(--duration-sheet-out) var(--ease-out);
-
-  // A letter is about 0.62em wide.
-  @include portrait {
-    --glyph: min(118cqw, 72cqh);
-  }
 
   &:focus-visible {
     outline: none;
@@ -123,6 +118,8 @@
 
   > * {
     grid-area: 1 / 1;
+    // A layer of its own, or Safari blends it with nothing and it shows white.
+    will-change: transform;
   }
 }
 
@@ -141,7 +138,7 @@
 // text's blend with the glyph.
 .top {
   position: absolute;
-  top: calc(40px + env(safe-area-inset-top));
+  top: calc(var(--inset) + env(safe-area-inset-top));
   left: var(--edge-left);
   right: var(--edge-right);
   display: flex;
@@ -149,7 +146,6 @@
   justify-content: space-between;
 
   @include phone {
-    top: calc(20px + env(safe-area-inset-top));
     display: grid;
     grid-template:
       "name nav" auto
@@ -165,6 +161,22 @@
     }
     .top-nav {
       grid-area: nav;
+    }
+  }
+
+  // Upright, down to the foot, so the sets can sit over the glyph.
+  @include portrait {
+    bottom: 0;
+    grid-template: "name nav" auto / 1fr auto;
+    align-content: start;
+    pointer-events: none;
+
+    > * {
+      pointer-events: auto;
+    }
+
+    .sets {
+      grid-area: auto;
     }
   }
 }
@@ -210,6 +222,15 @@
 
   @include phone {
     gap: 4px 26px;
+  }
+
+  // Over a letter's box.
+  @include portrait {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100dvh - var(--glyph-y) + 0.38 * var(--glyph) + var(--gap));
+    justify-content: center;
   }
 
   button {
@@ -353,6 +374,15 @@
 .phase-mark {
   right: -14px;
   margin-top: -2.5px;
+
+  // Under the row, running along it.
+  @include portrait {
+    top: auto;
+    right: auto;
+    bottom: 0;
+    left: 0;
+    margin: 0 0 0 -2.5px;
+  }
 }
 
 // Full height to centre the list; only the list itself takes clicks.
@@ -365,39 +395,29 @@
   align-items: center;
   pointer-events: none;
 
-  // Centred on the glyph's ink, not the page: the stage sits 8vh up, and
-  // capitals ride a little above the middle of their box.
+  // Level with the stage's middle, where the glyph centres.
   @include side {
     padding-bottom: calc(8vh + 0.13 * var(--glyph));
   }
 
+  // Upright, rows under a letter's box.
   @include portrait {
-    top: auto;
+    top: calc(var(--glyph-y) + 0.38 * var(--glyph) + var(--gap));
+    bottom: auto;
     display: block;
+
+    .rail :is(ul, ol) {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0 min(18px, 3.5vw);
+    }
   }
 }
 
 .rail {
   position: relative;
   pointer-events: auto;
-}
-
-// Shown only upright, where there's no hover to explain the list.
-.rail-label {
-  display: none;
-  padding-bottom: 6px;
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.02em;
-  --tone: var(--text-faint);
-
-  .phases & {
-    text-align: right;
-  }
-
-  @include portrait {
-    display: block;
-  }
 }
 
 .preset-note,
@@ -418,7 +438,7 @@
   left: var(--edge-left);
 
   @include portrait {
-    bottom: calc(var(--band-foot) + env(safe-area-inset-bottom));
+    right: var(--edge-right);
   }
 
   ul {
@@ -443,9 +463,12 @@
 .phases {
   right: var(--edge-right);
 
-  // A row higher, to start level with the presets.
+  // A row under the presets.
   @include portrait {
-    bottom: calc(var(--band-foot) + var(--row) + env(safe-area-inset-bottom));
+    top: calc(
+      var(--glyph-y) + 0.38 * var(--glyph) + var(--gap) + var(--row) + 8px
+    );
+    left: var(--edge-left);
   }
 
   ol {
@@ -494,98 +517,12 @@
   }
 }
 
-// One field, so it blends whole: white by difference, greys as lower opacity.
-.foot {
-  position: fixed;
-  left: var(--edge-left);
-  right: var(--edge-right);
-  bottom: 40px;
-  display: grid;
-  justify-items: center;
-  z-index: 2;
-  mix-blend-mode: difference;
-  --text: #fff;
-  --text-muted: rgb(255 255 255 / 0.72);
-  --text-faint: rgb(255 255 255 / 0.46);
-  --hairline: rgb(255 255 255 / 0.22);
-  --ink: #fff;
-  color: var(--text);
-
-  @include phone {
-    bottom: calc(20px + env(safe-area-inset-bottom));
-  }
-
-  @include side {
-    transition: right var(--duration-sheet-out) var(--ease-out);
-  }
-
-  [data-ledger="open"] & {
-    @include side {
-      right: calc(var(--ledger-w) + var(--edge));
-      transition-duration: var(--duration-sheet-in);
-    }
-  }
-}
-
-// Upright, the sheet covers these: hidden once it lands, out of the tab order.
-[data-ledger="open"] :is(.presets, .phases, .foot) {
+// Upright, the sheet covers these or the glyph rises past them: hidden once
+// it lands, out of the tab order.
+[data-ledger="open"] :is(.sets, .presets, .phases) {
   @include portrait {
     visibility: hidden;
     transition: visibility 0s var(--duration-sheet-in);
-  }
-}
-
-.write {
-  position: relative;
-  width: min(100%, 26em);
-
-  input {
-    width: 100%;
-    padding: 10px 0;
-    border: 0;
-    border-bottom: 1px solid var(--hairline);
-    border-radius: 0;
-    background: transparent;
-    caret-color: var(--ink);
-    font-size: 1rem;
-    text-align: center;
-    transition: border-color 200ms var(--ease-out);
-
-    // 16px keeps iOS from zooming in on focus.
-    @include phone {
-      font-size: 16px;
-    }
-
-    &::placeholder {
-      color: var(--text-muted);
-      transition: opacity 200ms var(--ease-out);
-    }
-
-    &:focus::placeholder {
-      opacity: 0.5;
-    }
-
-    &:focus-visible {
-      outline: none;
-      border-bottom-color: var(--ink);
-    }
-  }
-}
-
-.write-enter {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 10px;
-  color: var(--text-faint);
-  font-size: var(--text-small);
-  text-align: center;
-  opacity: 0;
-  transition: opacity 200ms var(--ease-out);
-
-  [data-word] & {
-    opacity: 1;
   }
 }
 
@@ -600,7 +537,7 @@
   }
 
   .stage {
-    padding: 88px 0 56px;
+    padding: 88px 0 calc(56px + 0.13 * var(--glyph));
   }
 
   :root {
@@ -622,10 +559,6 @@
   .phase-note {
     display: none;
   }
-
-  .foot {
-    bottom: 12px;
-  }
 }
 
 // Each Ink span and dot fades itself: fading a box around them would cut
@@ -634,7 +567,6 @@ $entering: ":is(.top, .presets, .phases) :is(.ink-a, .ink-b, .sets-mark, .preset
 
 .js:not(.ready) {
   .fog,
-  .foot,
   #{$entering},
   .name-i::after {
     opacity: 0;
@@ -652,11 +584,6 @@ $entering: ":is(.top, .presets, .phases) :is(.ink-a, .ink-b, .sets-mark, .preset
     --enter: 220ms;
   }
 
-  .foot {
-    --enter: 320ms;
-  }
-
-  .foot,
   #{$entering},
   .name-i::after {
     animation: enter 700ms var(--ease-out) var(--enter) backwards;

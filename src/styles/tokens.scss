@@ -25,6 +25,8 @@
   --duration-sheet-out: 320ms;
   --glyph: min(62vh, 54vw);
   --edge: 56px;
+  // The header's distance from the top, and upright, the foot's margin.
+  --inset: 40px;
   // Clear of a notch on a phone on its side.
   --edge-left: max(var(--edge), env(safe-area-inset-left));
   --edge-right: max(var(--edge), env(safe-area-inset-right));
@@ -32,12 +34,12 @@
   color-scheme: light;
   scrollbar-color: var(--text-faint) transparent;
 
-  // The lists' band upright: its height above the foot, and a row.
-  --row: 35px;
-  --band-foot: 84px;
+  // A list's row upright.
+  --row: 32px;
 
   @include phone {
     --edge: 20px;
+    --inset: 20px;
   }
 
   @include tablet {
@@ -46,6 +48,26 @@
     --text-small: 0.8125rem;
     --row: 40px;
     --edge: 48px;
+  }
+
+  // Upright, one stack centred under the header (34px): the sets, a letter's
+  // box, and the two rows, a gap apart. A letter stands about 0.76em tall and
+  // 0.62em wide.
+  @include portrait {
+    --gap: 24px;
+    --room: calc(
+      100dvh - 2 * var(--inset) -
+        34px - env(safe-area-inset-top) - env(safe-area-inset-bottom)
+    );
+    --glyph: min(118vw, 0.6 * var(--room));
+    --stack: calc(
+      38px + 2 * var(--gap) + 0.76 * var(--glyph) + 2 * var(--row) + 8px
+    );
+    --glyph-y: calc(
+      var(--inset) + 34px + env(safe-area-inset-top) +
+        (var(--room) - var(--stack)) / 2 + 38px + var(--gap) + 0.38 *
+        var(--glyph)
+    );
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -4,7 +4,7 @@
   }
 }
 
-// Upright: controls in a band at the foot, settings as a bottom sheet.
+// Upright: controls in rows under the glyph, settings as a bottom sheet.
 @mixin portrait {
   @media (max-width: 599px), (max-width: 1100px) and (orientation: portrait) {
     @content;
@@ -36,4 +36,5 @@
   border-radius: 50%;
   background: #fff;
   mix-blend-mode: difference;
+  will-change: transform;
 }

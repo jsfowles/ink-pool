@@ -119,6 +119,12 @@ export const draw: Draw = (ctx, key, { width, height, size, font }) => {
   // sentence wraps into balanced lines. Each returns how much smaller than
   // usual it drew, so the pool's spread shrinks with it.
   const word = kind === "word" || kind === "line";
+  // Down from the middle of the em box to the middle of the ink, so a glyph
+  // centres on what it draws.
+  const lift = (text: string) => {
+    const m = ctx.measureText(text);
+    return (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+  };
   const set = (px: number) => {
     ctx.font = font.replace(`${size}px`, `${px}px`);
     ctx.letterSpacing = word ? `${px * 0.02}px` : "0px";
@@ -131,7 +137,7 @@ export const draw: Draw = (ctx, key, { width, height, size, font }) => {
     const wide = ctx.measureText(value).width;
     const px = wide > room ? (max * room) / wide : max;
     set(px);
-    ctx.fillText(value, cx, cy);
+    ctx.fillText(value, cx, cy + lift(value));
     return px / max;
   }
   const lines = (w: number) => {
@@ -171,14 +177,12 @@ export const draw: Draw = (ctx, key, { width, height, size, font }) => {
     else narrow = mid;
   }
   const rows = lines(wide);
-  // Centred where a capital's ink would be, inside the free band.
+  // Centred on the capitals' ink, inside the free band.
   const block = rows.length * lo * LEAD;
-  const middle = free
-    ? Math.min(
-        Math.max(cy - 0.065 * size, free.top + block / 2),
-        free.bottom - block / 2,
-      )
-    : cy;
+  const middle =
+    (free
+      ? Math.min(Math.max(cy, free.top + block / 2), free.bottom - block / 2)
+      : cy) + lift("H");
   for (const [i, row] of rows.entries())
     ctx.fillText(row, cx, middle + (i - (rows.length - 1) / 2) * lo * LEAD);
   return lo / max;
