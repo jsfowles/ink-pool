@@ -139,7 +139,7 @@ Same idea anywhere else: make it once, `show` when it changes, `teardown` when i
 | -------------------------------- | ---------------------------------------------------------- |
 | `inkPool(el, settings, options)` | Starts a pool in `el`. Both after `el` are optional.       |
 | `pool.show(glyph)`               | Shows a glyph. If one's still morphing, it waits its turn. |
-| `pool.show(glyph, { replace })`  | Skips the line: anything waiting gets dropped.             |
+| `pool.show(glyph, { replace })`  | Skips the line: it starts now, and anything waiting goes.  |
 | `pool.hold(stop)`                | Freezes it at a stop. `null` lets go.                      |
 | `pool.set(settings)`             | New settings, and it rereads the color.                    |
 | `pool.teardown()`                | Stops it and removes the canvas.                           |

@@ -14,6 +14,7 @@
   --lift: lighten;
   --tone-full: #000;
   --fog-opacity: 0.85;
+  --grain: 0.3;
   --font-sans: "Poppins", "Poppins Fallback", sans-serif;
   --font-mono: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --text-name: 1rem;
@@ -89,5 +90,6 @@
   --lift: darken;
   --tone-full: #fff;
   --fog-opacity: 0.22;
+  --grain: 0.2;
   color-scheme: dark;
 }

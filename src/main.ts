@@ -2,7 +2,7 @@ import { paintFog } from "./fog";
 import { describe, draw, drawIcon, setBand, SETS } from "./glyphs";
 import { startLedger } from "./ledger";
 import { inkMark, inkRun, inkSwap, inkText, RUN } from "./ink";
-import { DEFAULTS, inkPool, PHASES, type Phase } from "./pool";
+import { DEFAULTS, inkPool, PHASES, type Phase, type Settings } from "./pool";
 import source from "./pool.ts?raw";
 
 const $ = <T extends HTMLElement>(id: string) =>
@@ -131,10 +131,34 @@ const pool = inkPool($("pool"), undefined, {
   draw,
   onProgress: showProgress,
 });
+// A preset eases in over this long, from wherever the settings were. Its
+// duration and breathe change at once: the morph and the breath take them up.
+const EASE = 600;
+let shown: Settings | null = null;
+let easing = 0;
+const apply = (to: Settings, ease = false) => {
+  cancelAnimationFrame(easing);
+  const from = shown;
+  if (!ease || !from || reduced.matches) {
+    pool.set((shown = to));
+    return;
+  }
+  const begun = performance.now();
+  const run = (now: number) => {
+    const k = 1 - (1 - Math.min((now - begun) / EASE, 1)) ** 3;
+    const mixed = { ...to };
+    for (const key of Object.keys(to) as (keyof Settings)[])
+      if (key !== "duration" && key !== "breathe")
+        mixed[key] = from[key] + (to[key] - from[key]) * k;
+    pool.set((shown = mixed));
+    if (k < 1) easing = requestAnimationFrame(run);
+  };
+  easing = requestAnimationFrame(run);
+};
 let touring = true;
 let tourStep = false;
 const ledger = startLedger((settings, { live, preset }) => {
-  pool.set(settings);
+  apply(settings, preset);
   if (!tourStep) touring = false;
   // Letting go of a slider or choosing a preset writes the next glyph. A
   // preset also lets go of a hold; a slider keeps it, to tune the held frame.
@@ -143,7 +167,7 @@ const ledger = startLedger((settings, { live, preset }) => {
   next();
   keepWriting();
 }, source);
-pool.set(ledger.settings());
+apply(ledger.settings());
 
 let set = 0;
 let at = 0;
@@ -301,7 +325,7 @@ const showTheme = () => {
     "content",
     getComputedStyle(root).getPropertyValue("--fog").trim(),
   );
-  pool.set(ledger.settings());
+  apply(ledger.settings());
 };
 const chosen = () => {
   try {
@@ -331,7 +355,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
 showTheme();
 
 reduced.addEventListener("change", () => {
-  pool.set(ledger.settings());
+  apply(ledger.settings());
   keepWriting();
 });
 

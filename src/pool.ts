@@ -518,11 +518,16 @@ export const inkPool = (
     // Quicker with a backlog, down to a third of the duration.
     const pace = Math.max(0.35, 1 / (1 + queue.length * 0.6));
     const duration = settings.duration * pace;
-    previous = current;
-    morph = { from: current, to: key, progress: 0, duration };
+    // Cut short, it picks up the pool as it is: from whichever glyph shows
+    // more, as far in as the old morph had melted.
+    const t = morph ? morph.progress : 0;
+    const from = morph && t < 0.5 ? morph.from : current;
+    const progress = Math.min(t, 1 - t);
+    previous = from;
+    morph = { from, to: key, progress, duration };
     current = key;
     if (holdAt !== null) glideTo(holdAt);
-    else animateTo(1, duration);
+    else animateTo(1, (1 - progress) * duration);
   };
 
   const finishMorph = () => {
@@ -550,7 +555,7 @@ export const inkPool = (
     }
     if (replace) queue.length = 0;
     if (key === (queue.at(-1) ?? current)) return;
-    if (morph && queueLimit > 0) {
+    if (morph && queueLimit > 0 && !replace) {
       queue.push(key);
       if (queue.length > queueLimit) queue.shift();
       return;
