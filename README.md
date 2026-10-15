@@ -1,5 +1,10 @@
 # Ink pool
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/hero-dark.gif" />
+  <img src="media/hero-light.gif" alt="The word INK pools into POOL, then MELT, then back into INK" width="100%" />
+</picture>
+
 A glyph transition. Two glyphs blur into one pool of ink, a threshold keeps the edge sharp, and the next one firms up out of it.
 
 **[Play with it →](https://ink-pool.jsfowles.com)**
@@ -170,6 +175,7 @@ The playground's presets are good starting points: **Glass** (the defaults), **B
 - The canvas is hidden from screen readers, so label the element.
 - No WebGL2? It still shows the glyph, it just won't morph.
 - It only draws while something's moving.
+- Cut a morph short and the next picks up the pool where it is, so it never jumps.
 - I've mostly tested it in Chrome. Safari and Firefox should be fine, but check.
 
 ## The playground
@@ -179,7 +185,7 @@ npm install
 npm run dev
 ```
 
-It's an Astro page. Type to write, Enter for the whole line, arrow keys to step through a set. `npm run check` typechecks and formats. The effect is `src/pool.ts`, everything else is the playground.
+It's an Astro page. Press a key to write it, or use the arrow keys to step through a set. `npm run check` typechecks and formats. The effect is `src/pool.ts`, everything else is the playground.
 
 ## License
 
