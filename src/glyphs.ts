@@ -72,12 +72,42 @@ export const SETS: GlyphSet[] = [
 ];
 
 // Pause and play, in a unit box centred on 0, 0.
+// A disc, wound the same way as the bars so they fill as one.
+const disc = (x: number, y: number, r: number) =>
+  `M${x + r} ${y}A${r} ${r} 0 1 1 ${x - r} ${y}A${r} ${r} 0 1 1 ${x + r} ${y}Z`;
+const bar = (y: number) => `M-0.38 ${y - 0.045}h0.76v0.09h-0.76z`;
+
+// The header's icons, in a unit box centred on 0, 0.
 const ICONS: Record<string, string> = {
   pause: "M-0.36 -0.4h0.25v0.8h-0.25zM0.11 -0.4h0.25v0.8h-0.25z",
   play: "M-0.3 -0.42L0.42 0L-0.3 0.42z",
+  // Settings, and closing them.
+  sliders: [
+    bar(-0.24),
+    bar(0),
+    bar(0.24),
+    disc(0.14, -0.24, 0.115),
+    disc(-0.16, 0, 0.115),
+    disc(0.06, 0.24, 0.115),
+  ].join(""),
+  close:
+    "M-0.2276 -0.3124L0.3124 0.2276L0.2276 0.3124L-0.3124 -0.2276Z" +
+    "M-0.2276 0.3124L-0.3124 0.2276L0.2276 -0.3124L0.3124 -0.2276Z",
+  // The glass to switch to: light, then dark.
+  sun: [
+    disc(0, 0, 0.2),
+    ...Array.from({ length: 8 }, (_, i) =>
+      disc(
+        0.4 * Math.cos((i * Math.PI) / 4),
+        0.4 * Math.sin((i * Math.PI) / 4),
+        0.07,
+      ),
+    ),
+  ].join(""),
+  moon: "M0.0737 -0.3718A0.374 0.374 0 1 0 0.3432 0.2063A0.319 0.319 0 0 1 0.0737 -0.3718Z",
 };
 
-/** Draws the pause or play icon, about a capital's height. */
+/** Draws one of the header's icons, about a capital's height. */
 export const drawIcon: Draw = (ctx, key, { width, height, size }) => {
   const k = size * 0.52;
   ctx.setTransform(

@@ -9,6 +9,9 @@
 - **Preset**: a named set of settings in the playground.
 - **Phase**: a stretch of a morph: start, melting, pooled, forming, settled.
 - **Hold**: a morph frozen at a phase or a point from 0 to 1.
+- **Turn**: the glyph running up the page instead of across, a setting from 0 to 1 the pool eases between and draws itself.
+- **Dot**: the mark that shows a place in a list: the chosen set or preset, or how far a morph has got along the phases.
+- **Arrange**: moving the lists from one layout to another, as when the glyph turns, as one motion.
 - **Timeline**: the morphs over time: what shows, what waits, how far along. Runs on a clock it's given, so it's tested without a browser.
 - **Renderer**: draws the timeline's view. WebGL is the morph; the 2D renderer shows each glyph at rest where WebGL2 isn't there.
 - **Playground**: the site around the pool, for tuning it. Everything in `src/` but `pool.ts`.

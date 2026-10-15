@@ -28,6 +28,18 @@
   --edge: 56px;
   // The header's distance from the top, and upright, the foot's margin.
   --inset: 40px;
+  // Turned, the glyph fills the height from under the sets to the foot.
+  --turn-top: calc(var(--inset) + 92px + env(safe-area-inset-top));
+  --turn-room: calc(
+    100dvh - var(--turn-top) - var(--inset) - env(safe-area-inset-bottom)
+  );
+  --turn-y: calc(var(--turn-top) + var(--turn-room) / 2);
+  // The glyph's middle across: 8vh up from the page's, and a little more, so
+  // capitals sit where they always have.
+  --glyph-y: calc((100dvh - 8vh - 0.13 * var(--glyph)) / 2);
+  // How far from the middle the lists stand beside it: clear of a short word
+  // like INK, about 0.37 of the room thick, with a gap.
+  --turn-reach: calc(0.19 * var(--turn-room) + 40px);
   // Clear of a notch on a phone on its side.
   --edge-left: max(var(--edge), env(safe-area-inset-left));
   --edge-right: max(var(--edge), env(safe-area-inset-right));

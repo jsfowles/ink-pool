@@ -7,8 +7,8 @@ import Ink from "./Ink.astro";
   <div class="rail">
     <span class="preset-mark" id="preset-mark" aria-hidden="true"></span>
     <ul>
-      {Object.entries(PRESETS).map(([name, { note }]) => (
-        <li>
+      {Object.entries(PRESETS).map(([name, { note }], i) => (
+        <li style={`--i: ${i}`}>
           <button
             type="button"
             data-preset={name}

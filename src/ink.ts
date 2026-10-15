@@ -54,26 +54,91 @@ export const inkRun = (mark: Element, dx: number, dy: number, move = true) => {
   );
 };
 
-/** Keeps a dot at `at` by the pressed button, running to the next one
- *  pressed; with none pressed, it fades. */
-export const inkMark = (
+export type Dot = {
+  mark: HTMLElement;
+  /** Where it is: an item's index, or a point between two. */
+  at: number;
+  /** Moves to a place, running there like a pulled drop if asked. */
+  to: (at: number, options?: { run?: boolean }) => void;
+  /** Where a place is, in the list's px. */
+  spot: (at: number) => [number, number];
+  /** Re-places it at once, after the list's layout changed. */
+  place: () => void;
+};
+
+/** A dot that marks a place in a list: under the item in a row, beside it in
+ *  a column, on the side facing the nearer edge of the screen. It re-places
+ *  itself whenever the list's layout changes. With `follow`, it keeps to the
+ *  pressed item, and fades with none pressed. */
+export const inkDot = (
   mark: HTMLElement,
-  buttons: HTMLElement[],
-  at: (b: HTMLElement) => [number, number],
-) => {
-  let was: [number, number] | null = null;
-  const place = (run: boolean) => {
-    const b = buttons.find((b) => b.ariaPressed === "true");
-    mark.style.opacity = b ? "" : "0";
-    if (!b) return void (was = null);
-    const [x, y] = at(b);
-    mark.style.transform = `translate(${x}px, ${y}px)`;
-    if (run && was) inkRun(mark, x - was[0], y - was[1]);
-    was = [x, y];
+  items: HTMLElement[],
+  { follow = false } = {},
+): Dot => {
+  let spots: [number, number][] = [];
+  const measure = () => {
+    // Out of the way while the list is measured: left in its old place, it
+    // could sit past the edge, and a touch screen would widen the page.
+    mark.style.translate = "0 0";
+    const row = items[0].offsetTop === items[1].offsetTop;
+    spots = items.map((b) => {
+      if (row)
+        return [
+          b.offsetLeft + b.offsetWidth / 2 - 2.5,
+          b.offsetTop + b.offsetHeight - 5,
+        ];
+      const r = b.getBoundingClientRect();
+      const right = r.left + r.width / 2 > innerWidth / 2;
+      return [
+        right ? b.offsetLeft + b.offsetWidth + 9 : b.offsetLeft - 14,
+        b.offsetTop + b.offsetHeight / 2 - 2.5,
+      ];
+    });
   };
-  const pressed = new MutationObserver(() => place(true));
-  for (const b of buttons)
-    pressed.observe(b, { attributeFilter: ["aria-pressed"] });
-  new ResizeObserver(() => place(false)).observe(mark.parentElement!);
-  place(false);
+  const spot = (at: number): [number, number] => {
+    if (!spots.length) measure();
+    const i = Math.min(Math.max(Math.floor(at), 0), spots.length - 1);
+    const j = Math.min(i + 1, spots.length - 1);
+    const k = Math.min(Math.max(at - i, 0), 1);
+    return [
+      spots[i][0] + (spots[j][0] - spots[i][0]) * k,
+      spots[i][1] + (spots[j][1] - spots[i][1]) * k,
+    ];
+  };
+  // By translate, apart from transform, so a run's stretch scales the dot and
+  // never its distance along the list.
+  const put = (at: number) => {
+    const [x, y] = spot(at);
+    mark.style.translate = `${x.toFixed(1)}px ${y.toFixed(1)}px`;
+  };
+  const dot: Dot = {
+    mark,
+    at: 0,
+    to: (at, { run = false } = {}) => {
+      const [x, y] = spot(dot.at);
+      const [nx, ny] = spot(at);
+      dot.at = at;
+      put(at);
+      if (run) inkRun(mark, nx - x, ny - y);
+    },
+    spot,
+    place: () => {
+      measure();
+      put(dot.at);
+    },
+  };
+  new ResizeObserver(dot.place).observe(mark.parentElement!);
+  if (follow) {
+    const show = (run: boolean) => {
+      const i = items.findIndex((b) => b.ariaPressed === "true");
+      const shown = mark.style.opacity !== "0";
+      mark.style.opacity = i < 0 ? "0" : "";
+      if (i >= 0) dot.to(i, { run: run && shown });
+    };
+    const pressed = new MutationObserver(() => show(true));
+    for (const b of items)
+      pressed.observe(b, { attributeFilter: ["aria-pressed"] });
+    show(false);
+  }
+  return dot;
 };

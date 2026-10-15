@@ -105,28 +105,46 @@ const drops = [
               <Ink text={s.label} />
             </button>
           ))}
+          <button
+            type="button"
+            id="turn"
+            class="turn"
+            aria-pressed="false"
+            aria-label="Run the glyph vertically"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M3 5h10M3 8h8M3 11h6" />
+            </svg>
+          </button>
           <span class="sets-mark" id="sets-mark" aria-hidden="true" />
         </nav>
       </div>
       <nav class="top-nav" aria-label="Page">
         <button type="button" id="pause" class="pause">
-          <span class="pause-slot"></span>
-          <span class="pause-icon" id="pause-icon" aria-hidden="true"></span>
+          <span class="icon-slot"></span>
+          <span class="icon" id="pause-icon" aria-hidden="true"></span>
+          <span class="pause-word" id="pause-word" aria-hidden="true">
+            <Ink />
+          </span>
+        </button>
+        <button
+          type="button"
+          id="settings-button"
+          data-opens=""
+          aria-expanded="false"
+          aria-controls="ledger"
+          aria-label="Settings"
+        >
+          <span class="icon-slot"></span>
+          <span class="icon" id="settings-icon" aria-hidden="true"></span>
+        </button>
+        <button type="button" id="theme">
+          <span class="icon-slot"></span>
+          <span class="icon" id="theme-icon" aria-hidden="true"></span>
         </button>
         <a href="https://github.com/jsfowles/ink-pool#readme">
           <Ink text="Docs" />
         </a>
-        <button
-          type="button"
-          data-opens=""
-          aria-expanded="false"
-          aria-controls="ledger"
-        >
-          <Ink text="Settings" />
-        </button>
-        <button type="button" id="theme">
-          <Ink text="Dark" />
-        </button>
       </nav>
     </header>
 
@@ -144,7 +162,7 @@ const drops = [
         <span class="phase-mark" id="phase-mark" aria-hidden="true"></span>
         <ol id="phases">
           {phases.map(([p, note], i) => (
-            <li data-phase={p}>
+            <li data-phase={p} style={`--i: ${i}`}>
               <button
                 type="button"
                 data-hold={p}

@@ -28,3 +28,37 @@
     filter: blur(14px);
   }
 }
+
+// The theme icon crossfades in step with the glass but without its blur,
+// so its own morph shows as it comes in.
+::view-transition-group(theme-icon) {
+  animation: none;
+}
+
+::view-transition-old(theme-icon),
+::view-transition-new(theme-icon) {
+  animation-duration: 450ms;
+  animation-timing-function: var(--ease-out);
+  animation-fill-mode: both;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(theme-icon) {
+  animation-name: icon-out;
+}
+
+::view-transition-new(theme-icon) {
+  animation-name: icon-in;
+}
+
+@keyframes icon-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes icon-in {
+  from {
+    opacity: 0;
+  }
+}

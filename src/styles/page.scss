@@ -52,31 +52,29 @@
 .stage {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
-  // Taller than its room upright; centred, it overflows both ways evenly.
-  place-content: center;
-  // Its middle where capitals' ink used to sit: 8vh up, and a little more.
-  padding-bottom: calc(8vh + 0.13 * var(--glyph));
-
-  @include portrait {
-    padding: max(0px, 2 * var(--glyph-y) - 100dvh) 0
-      max(0px, 100dvh - 2 * var(--glyph-y));
-  }
 }
 
+// One box for the glyph either way round: as wide as it runs across, as tall
+// as it runs turned. Its size never changes; turning slides it from one
+// middle to the other while the pool turns the glyph inside. Centred by
+// margins, so the sheet can still move and scale it.
 .ink {
-  position: relative;
+  --ink-w: min(100vw, calc(var(--glyph) * 2));
+  position: absolute;
+  top: var(--glyph-y);
+  left: 50%;
   display: grid;
   place-items: center;
-  width: min(100vw, calc(var(--glyph) * 2));
-  height: min(100dvh, calc(var(--glyph) * 1.7));
+  width: var(--ink-w);
+  height: var(--turn-room);
+  margin: calc(var(--turn-room) / -2) 0 0 calc(var(--ink-w) / -2);
   color: var(--ink);
   font-size: var(--glyph);
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
   transition:
+    top 700ms cubic-bezier(0.33, 1, 0.68, 1),
     translate var(--duration-sheet-out) var(--ease-out),
     scale var(--duration-sheet-out) var(--ease-out);
 
@@ -120,6 +118,38 @@
   position: relative;
   width: 100%;
   height: 100%;
+}
+
+// Its lines show which way the glyph reads.
+.turn svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  mix-blend-mode: difference;
+  opacity: 0.5;
+  will-change: transform;
+  transition:
+    rotate 300ms var(--ease-out),
+    opacity 150ms var(--ease-out);
+}
+
+.turn[aria-pressed="true"] svg {
+  rotate: -90deg;
+  opacity: 1;
+}
+
+// Gone while there's nothing to turn, keeping its place in the row.
+.turn:disabled {
+  visibility: hidden;
+  transition: visibility 0s 150ms;
+
+  svg {
+    opacity: 0;
+  }
 }
 
 // Ink text (Ink.astro): dark on the fog, light over the glyph.
@@ -275,17 +305,17 @@
   }
 }
 
-// Pause and play: a slot a letter wide, and over it the icon's own pool,
+// The header's icons: a slot a letter wide, and over it the icon's own pool,
 // with room round it for the ink to spread. White by difference, like the
 // dots.
-.pause-slot {
+.icon-slot {
   display: inline-block;
   width: 1em;
   height: 1lh;
   vertical-align: top;
 }
 
-.pause-icon {
+.icon {
   position: absolute;
   // Level with the capitals' middle: 0.7em down a 1.4 line, in the header's
   // own size (the icon's is its canvas's).
@@ -298,6 +328,36 @@
   font-size: 32px;
   mix-blend-mode: difference;
   pointer-events: none;
+}
+
+// The theme icon has a layer of its own in the theme switch (theme.scss), to
+// keep out of the fog; that layer can't blend, so it inks in the text's color.
+#theme-icon {
+  color: var(--text);
+  mix-blend-mode: normal;
+  view-transition-name: theme-icon;
+}
+
+// What a press did, said for a beat to the icon's left.
+.pause-word {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 6px);
+  white-space: nowrap;
+  pointer-events: none;
+  --tone: var(--text-muted);
+
+  // No room beside it on a phone: small, under the icon, above the sets. Placed
+  // by margin, not a transform, which would cut its blend.
+  @include phone {
+    top: calc(1.4 * var(--text-name) + 2px);
+    right: auto;
+    left: 50%;
+    width: 8em;
+    margin-left: -4em;
+    font-size: var(--text-small);
+    text-align: center;
+  }
 }
 
 // The hover ring, where a list's dot would sit.
@@ -365,35 +425,21 @@
   }
 }
 
+// Placed by inkDot, from the top left of their list.
 .sets-mark,
 .preset-mark,
 .phase-mark {
   @include dot;
   position: absolute;
   top: 0;
+  left: 0;
   pointer-events: none;
 }
 
 .sets-mark,
 .preset-mark {
-  left: 0;
-
   .js:not(.ready) & {
     visibility: hidden;
-  }
-}
-
-.phase-mark {
-  right: -14px;
-  margin-top: -2.5px;
-
-  // Under the row, running along it.
-  @include portrait {
-    top: auto;
-    right: auto;
-    bottom: 0;
-    left: 0;
-    margin: 0 0 0 -2.5px;
   }
 }
 
@@ -449,7 +495,8 @@
 .presets {
   left: var(--edge-left);
 
-  // Upright, two columns at the foot, the chosen one's note beside them.
+  // Upright, at the foot: half down the left, half down the right, and the
+  // chosen one's note between them.
   @include portrait {
     top: auto;
     bottom: calc(var(--inset) + env(safe-area-inset-bottom));
@@ -457,9 +504,22 @@
 
     .rail ul {
       display: grid;
-      grid-template-columns: repeat(2, max-content);
-      justify-content: start;
-      gap: 0 34px;
+      grid-template-columns: max-content 1fr max-content;
+      grid-template-rows: repeat(3, auto);
+      grid-auto-flow: column;
+    }
+
+    li:nth-child(-n + 3) {
+      grid-column: 1;
+    }
+
+    li:nth-child(n + 4) {
+      grid-column: 3;
+      justify-self: end;
+
+      button {
+        justify-content: flex-end;
+      }
     }
 
     button {
@@ -493,11 +553,12 @@
   --tone: var(--text-muted);
 
   @include portrait {
-    display: block;
     position: absolute;
-    right: 0;
-    bottom: 6px;
-    width: 44%;
+    inset: 0 26%;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    pointer-events: none;
   }
 }
 
@@ -506,7 +567,8 @@
 
   @include portrait {
     top: calc(
-      var(--ink-bottom, calc(var(--glyph-y) + 0.38 * var(--glyph))) +
+      var(--glyph-y) - var(--turn-room) / 2 +
+        var(--ink-depth, calc(var(--turn-room) / 2 + 0.38 * var(--glyph))) +
         var(--gap) - 8px
     );
     left: var(--edge-left);
@@ -543,7 +605,9 @@
 
   // Moved by `right`, not a transform, which would cut its blend.
   @include side {
-    transition: right var(--duration-sheet-out) var(--ease-out);
+    transition:
+      right var(--duration-sheet-out) var(--ease-out),
+      left var(--duration-sheet-out) var(--ease-out);
   }
 
   [data-ledger="open"] & {
@@ -587,12 +651,9 @@
     gap: 8px;
   }
 
-  .stage {
-    padding: 88px 0 calc(56px + 0.13 * var(--glyph));
-  }
-
   :root {
     --glyph: min(48vh, 40vw);
+    --glyph-y: calc((100dvh + 88px - 56px - 0.13 * var(--glyph)) / 2);
   }
 
   .presets,
@@ -612,9 +673,111 @@
   }
 }
 
+// Turned: the glyph runs up the page, filling the height under the sets, and
+// the lists stand in columns beside it.
+[data-turn] {
+  .ink {
+    top: var(--turn-y);
+  }
+
+  @include side {
+    // Level with the turned glyph's middle, lower than across.
+    .presets,
+    .phases {
+      padding: max(0px, 2 * var(--turn-y) - 100dvh) 0 0;
+    }
+
+    // Beside the glyph rather than at the edge; with no room, back at the
+    // edge.
+    .presets {
+      right: calc(50% + var(--turn-reach));
+      justify-content: safe flex-end;
+      transition: right var(--duration-sheet-out) var(--ease-out);
+    }
+
+    // As far out as the drops (56px) still fit.
+    .phases {
+      left: min(
+        calc(50% + var(--turn-reach)),
+        calc(100% - var(--edge-right) - 56px)
+      );
+    }
+
+    // The notes toward the edge, off the glyph.
+    .preset-note {
+      right: 0;
+      left: auto;
+      text-align: right;
+    }
+
+    .phase-note {
+      right: auto;
+      left: 0;
+      text-align: left;
+    }
+  }
+
+  // The sheet moves the glyph half its width aside and scales it to 0.82.
+  &[data-ledger="open"] {
+    @include side {
+      .presets {
+        right: calc(50% + var(--ledger-w) / 2 + 0.82 * var(--turn-reach));
+        transition-duration: var(--duration-sheet-in);
+      }
+
+      .phases {
+        left: min(
+          calc(50% - var(--ledger-w) / 2 + 0.82 * var(--turn-reach)),
+          calc(100% - var(--ledger-w) - var(--edge) - 56px)
+        );
+      }
+    }
+  }
+
+  // Upright, a column at each edge, centred on the glyph, as on a wide screen.
+  @include portrait {
+    .presets {
+      top: calc(var(--turn-y) - 3 * var(--row));
+      bottom: auto;
+      right: auto;
+
+      .rail ul {
+        grid-template-columns: max-content;
+        grid-template-rows: none;
+        grid-auto-flow: row;
+      }
+
+      // Over the halves' placement below.
+      li:nth-child(n) {
+        grid-column: auto;
+        justify-self: start;
+
+        button {
+          justify-content: flex-start;
+        }
+      }
+    }
+
+    .preset-now {
+      display: none;
+    }
+
+    .phases {
+      top: calc(var(--turn-y) - 2.5 * var(--row));
+      right: var(--edge-right);
+      left: auto;
+
+      .rail ol {
+        display: grid;
+        justify-items: end;
+      }
+    }
+  }
+}
+
 // Each Ink span and dot fades itself: fading a box around them would cut
 // their blend and flash them white.
-$entering: ":is(.top, .presets, .phases) :is(.ink-a, .ink-b, .sets-mark, .preset-mark, .phase-mark, .pause-icon)";
+$entering: ":is(.top, .presets, .phases) :is(.ink-a, .ink-b, .sets-mark, .preset-mark, .phase-mark, .icon, .drops)";
 
 .js:not(.ready) {
   .fog,
@@ -627,12 +790,22 @@ $entering: ":is(.top, .presets, .phases) :is(.ink-a, .ink-b, .sets-mark, .preset
 .ready {
   --enter: 0ms;
 
+  // The glyph writes itself first, at 300ms. As it firms up, the presets ink
+  // in; then the timeline, a drop at a time, its dot waiting at the start.
   .presets {
-    --enter: 160ms;
+    --enter: 800ms;
+  }
+
+  .presets li {
+    --enter: calc(800ms + var(--i) * 45ms);
   }
 
   .phases {
-    --enter: 220ms;
+    --enter: 1050ms;
+  }
+
+  .phases li {
+    --enter: calc(1050ms + var(--i) * 70ms);
   }
 
   #{$entering},
