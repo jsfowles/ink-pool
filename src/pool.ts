@@ -7,6 +7,7 @@
 //   pool.show("C", { replace: true }); // skips the line and starts now
 //   pool.hold("pooled");               // freezes at a phase or 0–1; null lets go
 //   pool.set({ sink: 12 });            // eases to new settings; { ease: 0 } snaps
+//   pool.set({ turn: 1 });             // turns it to run up the page
 //   pool.teardown();
 //
 // Options: draw (your own glyphs), queue (how many may wait, 3; 0 cuts short),
@@ -24,6 +25,7 @@ export type Settings = {
   fadeStart: number; // %, 100 is off
   fadeEnd: number; // %
   breathe: number; // s, 0 is off
+  turn: number; // 0 runs across, 1 up the page
 };
 
 export const DEFAULTS: Settings = {
@@ -38,16 +40,21 @@ export const DEFAULTS: Settings = {
   fadeStart: 100,
   fadeEnd: 100,
   breathe: 0,
+  turn: 0,
 };
 
+// Where a morph's phases fall, as shares of it: `at` is the moment that shows
+// each best, `until` where it ends. These are the defaults'; a pool reads its
+// own from its settings (`pool.phases()`).
 export const PHASES = {
   start: { at: 0.06, until: 0.12 },
   melting: { at: 0.3, until: 0.42 },
   pooled: { at: 0.5, until: 0.62 },
   forming: { at: 0.8, until: 1 },
-} as const;
+};
 
-export type Phase = keyof typeof PHASES | "settled";
+export type Phases = typeof PHASES;
+export type Phase = keyof Phases | "settled";
 
 export type Room = { top: number; bottom: number };
 
@@ -79,6 +86,7 @@ export type Pool = {
   show: (glyph: string, options?: { replace?: boolean }) => Promise<boolean>;
   hold: (at: Phase | number | null) => void;
   set: (settings: Partial<Settings>, options?: { ease?: number }) => void;
+  phases: () => Phases;
   teardown: () => void;
 };
 
@@ -98,7 +106,12 @@ type Morph = {
 type View = { morph: Morph | null; current: string };
 // width and height are device pixels.
 type Layout = { dpr: number; width: number; height: number; stage: Stage };
-type Glyph = { texture: WebGLTexture; scale: number | null };
+// Where a glyph's ink sits, in the stage's px from its middle, y down: the
+// middle of the ink and how far it runs from there, across and down; and how
+// much larger the glyph shows turned, as far up the box as it lets it run.
+type Turn = { middle: [number, number]; reach: [number, number]; grow: number };
+// scale: the share of stage.size it was drawn at.
+type Glyph = { texture: WebGLTexture; scale: number | null; turn: Turn };
 type Renderer = {
   resize: (layout: Layout) => void;
   render: (view: View, settings: Settings, ink: number[]) => number;
@@ -118,10 +131,147 @@ const smoothstep = (a: number, b: number, t: number) => {
 
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
 
-const phaseAt = (t: number): Phase =>
-  (Object.keys(PHASES) as (keyof typeof PHASES)[]).find(
-    (name) => t < PHASES[name].until,
-  ) ?? "forming";
+const phaseAt = (t: number, phases: Phases): Phase =>
+  (Object.keys(phases) as (keyof Phases)[]).find(
+    (name) => t < phases[name].until,
+  ) ?? "settled";
+
+// Where the phases fall for these settings, read off a pair of small words
+// put through the same mix, blur, sink, rise and cut as a morph: the old word
+// melting once it stops matching itself, pooled once neither reads, forming
+// once the new one reads, and settled once it matches itself.
+const W = 128;
+const H = 56;
+const FONT = 32;
+// As the pool measures a word: by the size it would draw a letter at.
+const UNIT = FONT / 0.72;
+const STEPS = 40;
+let words: [Float32Array, Float32Array] | undefined;
+const known = new Map<string, Phases>();
+const phasesFor = (settings: Settings): Phases => {
+  const { spread, hardness, threshold, sink, rise } = settings;
+  const id = [spread, hardness, threshold, sink, rise].join();
+  const seen = known.get(id);
+  if (seen) return seen;
+
+  words ??= (["INK", "POOL"] as const).map((text) => {
+    const ctx = document
+      .createElement("canvas")
+      .getContext("2d", { willReadFrequently: true })!;
+    ctx.canvas.width = W;
+    ctx.canvas.height = H;
+    ctx.font = `700 ${FONT}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, W / 2, H / 2);
+    const { data } = ctx.getImageData(0, 0, W, H);
+    return Float32Array.from(
+      { length: W * H },
+      (_, i) => data[i * 4 + 3] / 255,
+    );
+  }) as [Float32Array, Float32Array];
+  const [from, to] = words;
+
+  const at = (a: Float32Array, x: number, y: number) => {
+    const y0 = Math.floor(y);
+    const k = y - y0;
+    const row = (r: number) => (r < 0 || r >= H ? 0 : a[r * W + x]);
+    return row(y0) * (1 - k) + row(y0 + 1) * k;
+  };
+  const field = new Float32Array(W * H);
+  const pass = new Float32Array(W * H);
+  const blur = (
+    src: Float32Array,
+    out: Float32Array,
+    sigma: number,
+    across: boolean,
+  ) => {
+    const reach = Math.ceil(sigma * 3);
+    const weights = Array.from({ length: reach * 2 + 1 }, (_, i) =>
+      Math.exp(-((i - reach) ** 2) / (2 * sigma * sigma)),
+    );
+    const total = weights.reduce((a, b) => a + b);
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        let sum = 0;
+        for (let i = -reach; i <= reach; i++) {
+          const u = across ? clamp(x + i, 0, W - 1) : x;
+          const v = across ? y : clamp(y + i, 0, H - 1);
+          sum += weights[i + reach] * src[v * W + u];
+        }
+        out[y * W + x] = sum / total;
+      }
+  };
+  const cut = threshold + 0.5 / hardness;
+  const shape = (t: number) => {
+    const blend = smoothstep(0.28, 0.72, t);
+    const down = (smoothstep(0, 1, t) * sink * UNIT) / 100;
+    const up = ((1 - easeOut(t)) * rise * UNIT) / 100;
+    for (let y = 0; y < H; y++)
+      for (let x = 0; x < W; x++) {
+        const a = at(from, x, y - down) * (1 - blend);
+        const b = at(to, x, y + up) * blend;
+        field[y * W + x] = 1 - (1 - a) * (1 - b);
+      }
+    const sigma = Math.sin(Math.PI * t) ** 1.4 * spread * UNIT;
+    if (sigma > 0.35) {
+      blur(field, pass, sigma, true);
+      blur(pass, field, sigma, false);
+    }
+    return field.map((v) => (v > cut ? 1 : 0));
+  };
+  const overlap = (a: Float32Array, b: Float32Array) => {
+    let both = 0;
+    let either = 0;
+    for (let i = 0; i < a.length; i++) {
+      both += a[i] * b[i];
+      either += Math.max(a[i], b[i]);
+    }
+    return either ? both / either : 1;
+  };
+  const before = shape(0);
+  const after = shape(1);
+  const apart = overlap(before, after);
+  // How much like the old word and the new one, 0 (no more than each other)
+  // to 1, at each step.
+  const like = Array.from({ length: STEPS + 1 }, (_, i) => {
+    const now = shape(i / STEPS);
+    return [before, after].map(
+      (word) => (overlap(now, word) - apart) / (1 - apart || 1),
+    );
+  });
+  // The first share where `pass` holds, between steps.
+  const when = (pass: (i: number) => number) => {
+    for (let i = 1; i <= STEPS; i++)
+      if (pass(i) >= 0) {
+        const was = pass(i - 1);
+        return (i - 1 + (was < 0 ? was / (was - pass(i)) : 0)) / STEPS;
+      }
+    return 1;
+  };
+  const melting = when((i) => 0.94 - like[i][0]);
+  const pooled = Math.max(
+    when((i) => 0.35 - like[i][0]),
+    melting,
+  );
+  const forming = Math.max(
+    when((i) => like[i][1] - 0.35),
+    pooled,
+  );
+  const settled = Math.max(
+    when((i) => like[i][1] - 0.975),
+    forming,
+  );
+  const mid = (a: number, b: number) => (a + b) / 2;
+  const phases = {
+    start: { at: mid(0, melting), until: melting },
+    melting: { at: mid(melting, pooled), until: pooled },
+    pooled: { at: mid(pooled, forming), until: forming },
+    forming: { at: mid(forming, settled), until: settled },
+  };
+  known.set(id, phases);
+  return phases;
+};
 
 // Long text wraps, and shrinks until its lines fit.
 const drawText: Draw = (ctx, text, { width, height, size, font }) => {
@@ -168,11 +318,19 @@ out vec4 color;`;
 
 const MIX = `${HEADER}
 uniform sampler2D fromGlyph, toGlyph;
-uniform vec2 fromOffset, toOffset;
+uniform vec2 fromOffset, toOffset, fromAt, toAt, fromInk, toInk, frame;
+uniform mat2 fromSpin, toSpin;
 uniform float fromWeight, toWeight;
+// From the canvas to a glyph's own picture, in px from the middle: from where
+// its ink shows, turned and scaled back to where its picture has it.
+vec2 spun(mat2 spin, vec2 at, vec2 ink, vec2 offset) {
+  return (spin * ((uv - 0.5) * frame - at + offset) + ink) / frame + 0.5;
+}
 void main() {
-  float a = texture(fromGlyph, uv + fromOffset).a * fromWeight;
-  float b = texture(toGlyph, uv + toOffset).a * toWeight;
+  float a = texture(fromGlyph, spun(fromSpin, fromAt, fromInk, fromOffset)).a;
+  float b = texture(toGlyph, spun(toSpin, toAt, toInk, toOffset)).a;
+  a *= fromWeight;
+  b *= toWeight;
   color = vec4(1.0 - (1.0 - a) * (1.0 - b));
 }`;
 
@@ -247,10 +405,70 @@ const createPass = (gl: WebGL2RenderingContext, fragment: string) => {
     for (const [name, v] of Object.entries(uniforms)) {
       if (typeof v === "number") gl.uniform1f(at(name), v);
       else if (v.length === 2) gl.uniform2f(at(name), v[0], v[1]);
-      else gl.uniform3f(at(name), v[0], v[1], v[2]);
+      else if (v.length === 3) gl.uniform3f(at(name), v[0], v[1], v[2]);
+      else gl.uniformMatrix2fv(at(name), false, v);
     }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
+};
+
+let probe: CanvasRenderingContext2D | undefined;
+
+// How a glyph turns, read from a small drawing of it across.
+const measureTurn = (drawGlyph: Draw, key: string, stage: Stage): Turn => {
+  const k = Math.min(1, 200 / Math.max(stage.width, stage.height));
+  probe ??= document
+    .createElement("canvas")
+    .getContext("2d", { willReadFrequently: true })!;
+  const w = (probe.canvas.width = Math.max(1, Math.ceil(stage.width * k)));
+  const h = (probe.canvas.height = Math.max(1, Math.ceil(stage.height * k)));
+  probe.setTransform(k, 0, 0, k, 0, 0);
+  drawGlyph(probe, key, stage);
+  const { data } = probe.getImageData(0, 0, w, h);
+  let [left, top, right, bottom] = [w, h, 0, 0];
+  for (let i = 3; i < data.length; i += 4) {
+    if (!data[i]) continue;
+    const x = ((i - 3) / 4) % w;
+    const y = Math.floor((i - 3) / 4 / w);
+    left = Math.min(left, x);
+    right = Math.max(right, x + 1);
+    top = Math.min(top, y);
+    bottom = Math.max(bottom, y + 1);
+  }
+  if (right <= left) return { middle: [0, 0], reach: [0, 0], grow: 1 };
+  const reach: [number, number] = [
+    ((right - left) / 2 + 1) / k,
+    ((bottom - top) / 2 + 1) / k,
+  ];
+  return {
+    middle: [
+      (left + right) / 2 / k - stage.width / 2,
+      (top + bottom) / 2 / k - stage.height / 2,
+    ],
+    reach,
+    grow: Math.min(
+      Math.max(1, stage.height / stage.width),
+      (0.45 * stage.height) / reach[0],
+      (0.45 * stage.width) / reach[1],
+    ),
+  };
+};
+
+// Turned, a glyph is its picture across, turned up the page about the middle
+// of its ink, moved to the middle of the box, and grown.
+const drawTurned = (
+  ctx: CanvasRenderingContext2D,
+  drawGlyph: Draw,
+  key: string,
+  stage: Stage,
+  { middle: [x, y], grow }: Turn,
+) => {
+  const [cx, cy] = [stage.width / 2, stage.height / 2];
+  ctx.translate(cx, cy);
+  ctx.rotate(-Math.PI / 2);
+  ctx.scale(grow, grow);
+  ctx.translate(-cx - x, -cy - y);
+  return drawGlyph(ctx, key, stage);
 };
 
 const createRenderer = (
@@ -300,7 +518,23 @@ const createRenderer = (
   gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
   // Half floats keep a hard edge from stepping, where the browser allows.
   const halfFloat = !!gl.getExtension("EXT_color_buffer_float");
-  const empty: Glyph = { texture: createBlank(1, 1), scale: null };
+  // No glyph: one clear pixel, read by its alpha like the rest.
+  const empty: Glyph = {
+    texture: createTexture(),
+    scale: null,
+    turn: { middle: [0, 0], reach: [0, 0], grow: 1 },
+  };
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    1,
+    1,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    new Uint8Array(4),
+  );
 
   const glyphs = new Map<string, Glyph>();
   const scratch = document.createElement("canvas");
@@ -322,12 +556,13 @@ const createRenderer = (
     clearGlyphs();
   };
 
-  const getGlyph = (key: string) => {
+  const getGlyph = (key: string, turned = false) => {
     if (!key) return empty;
-    let glyph = glyphs.get(key);
+    const id = turned ? `turned:${key}` : key;
+    let glyph = glyphs.get(id);
     if (glyph) {
-      glyphs.delete(key);
-      glyphs.set(key, glyph);
+      glyphs.delete(id);
+      glyphs.set(id, glyph);
       return glyph;
     }
     const { dpr, width, height, stage } = layout;
@@ -336,7 +571,10 @@ const createRenderer = (
     const ctx = scratch.getContext("2d")!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, stage.width, stage.height);
-    const drawn = drawGlyph(ctx, key, stage);
+    const turn = measureTurn(drawGlyph, key, stage);
+    const drawn = turned
+      ? drawTurned(ctx, drawGlyph, key, stage, turn)
+      : drawGlyph(ctx, key, stage);
     const texture = createTexture(gl.LINEAR_MIPMAP_LINEAR);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
@@ -349,11 +587,11 @@ const createRenderer = (
       scratch,
     );
     gl.generateMipmap(gl.TEXTURE_2D);
-    glyph = { texture, scale: drawn && drawn > 0 ? drawn : 1 };
-    glyphs.set(key, glyph);
-    // Keep the four most recent.
+    glyph = { texture, scale: drawn && drawn > 0 ? drawn : 1, turn };
+    glyphs.set(id, glyph);
+    // Keep the eight most recent.
     for (const [oldKey, old] of glyphs) {
-      if (glyphs.size <= 4) break;
+      if (glyphs.size <= 8) break;
       gl.deleteTexture(old.texture);
       glyphs.delete(oldKey);
     }
@@ -367,25 +605,58 @@ const createRenderer = (
   ) => {
     const { dpr, width, height, stage } = layout;
     const t = morph ? morph.progress : 1;
-    const to = getGlyph(morph ? morph.to : current);
-    const from = getGlyph(morph ? morph.from : "");
+    // Turning, a glyph's picture across turns about the middle of its ink,
+    // which moves to the middle of the box, and grows as the box lets it. Past
+    // halfway its picture up the page, drawn the same way, shows instead.
+    const turn = clamp(settings.turn, 0, 1);
+    const turned = turn >= 0.5;
+    const toKey = morph ? morph.to : current;
+    const fromKey = morph ? morph.from : "";
+    const to = getGlyph(toKey, turned);
+    const from = getGlyph(fromKey, turned);
     const blend = morph ? smoothstep(0.28, 0.72, t) : 1;
 
-    // Lengths scale with the size each glyph was drawn at.
-    const fromScale = from.scale ?? to.scale ?? 1;
-    const toScale = to.scale ?? fromScale;
-    const scale = fromScale + (toScale - fromScale) * blend;
-    const fontPx = stage.size * dpr;
+    // How a glyph shows: turned and scaled, as a matrix from the canvas to its
+    // picture; where its ink shows and where its picture has it, in device px
+    // from the middle, y up; and how large, against its picture across.
+    const show = ({ turn: { middle, reach, grow } }: Glyph) => {
+      const angle = (Math.PI / 2) * turn;
+      const [cos, sin] = [Math.abs(Math.cos(angle)), Math.abs(Math.sin(angle))];
+      const [x, y] = middle.map((v) => v * (1 - turn));
+      // Smaller at a slant, as much as keeps its corners in the box.
+      const size = Math.min(
+        1 + (grow - 1) * turn,
+        (stage.width / 2 - Math.abs(x)) / (reach[0] * cos + reach[1] * sin),
+        (stage.height / 2 - Math.abs(y)) / (reach[0] * sin + reach[1] * cos),
+      );
+      const k = turned ? size / grow : size;
+      const a = turned ? angle - Math.PI / 2 : angle;
+      const [c, s] = [Math.cos(a) / k, Math.sin(a) / k];
+      return {
+        spin: [c, -s, s, c],
+        at: [x * dpr, -y * dpr],
+        ink: turned ? [0, 0] : [middle[0] * dpr, -middle[1] * dpr],
+        size,
+      };
+    };
+    const fromShow = show(from);
+    const toShow = show(to);
+
+    // Lengths scale with the size each glyph shows at.
+    const unit = (glyph: Glyph, size: number) =>
+      glyph.scale === null ? null : glyph.scale * stage.size * size;
+    const fromUnit =
+      unit(from, fromShow.size) ?? unit(to, toShow.size) ?? stage.size;
+    const toUnit = unit(to, toShow.size) ?? fromUnit;
+    const size = (fromUnit + (toUnit - fromUnit) * blend) * dpr;
     const sigma = morph
-      ? Math.sin(Math.PI * t) ** 1.4 * settings.spread * (fontPx * scale)
+      ? Math.sin(Math.PI * t) ** 1.4 * settings.spread * size
       : 0;
     const sink = morph
-      ? (smoothstep(0, 1, t) * settings.sink * fontPx * fromScale) /
-        100 /
-        height
+      ? (smoothstep(0, 1, t) * settings.sink * fromUnit * dpr) / 100
       : 0;
     const rise = morph
-      ? ((1 - easeOut(t)) * settings.rise * fontPx * toScale) / 100 / height
+      ? ((1 - easeOut(t)) * settings.rise * toUnit * dpr) / 100
       : 0;
 
     // The mix and blur run on a smaller image, so a wide blur stays cheap.
@@ -403,6 +674,13 @@ const createRenderer = (
       {
         fromOffset: [0, sink],
         toOffset: [0, -rise],
+        fromAt: fromShow.at,
+        toAt: toShow.at,
+        fromInk: fromShow.ink,
+        toInk: toShow.ink,
+        frame: [width, height],
+        fromSpin: fromShow.spin,
+        toSpin: toShow.spin,
         fromWeight: 1 - blend,
         toWeight: blend,
       },
@@ -443,7 +721,7 @@ const createRenderer = (
         fadeEnd: fade ? fadeEnd / 100 : 3,
       },
     );
-    return scale;
+    return size / dpr / stage.size;
   };
 
   return { resize, render, clearGlyphs };
@@ -463,7 +741,11 @@ const createFlat = (
       ctx.clearRect(0, 0, stage.width, stage.height);
       ctx.fillStyle = ctx.strokeStyle = `rgb(${ink.map((c) => c * 255)})`;
       ctx.globalAlpha = settings.opacity;
-      return drawGlyph(ctx, current, stage) || 1;
+      if (settings.turn < 0.5) return drawGlyph(ctx, current, stage) || 1;
+      const turn = measureTurn(drawGlyph, current, stage);
+      return (
+        (drawTurned(ctx, drawGlyph, current, stage, turn) || 1) * turn.grow
+      );
     },
     clearGlyphs: () => {},
   };
@@ -482,11 +764,13 @@ export const createTimeline = ({
   duration,
   queue: limit = 3,
   reduced = () => false,
+  phases = () => PHASES,
 }: {
   now: () => number;
   duration: () => number; // ms
   queue?: number;
   reduced?: () => boolean;
+  phases?: () => Phases;
 }) => {
   let current = "";
   let previous = "";
@@ -577,7 +861,7 @@ export const createTimeline = ({
 
     hold: (at: Phase | number | null) => {
       if (at === "settled") at = null;
-      holdAt = typeof at === "string" ? PHASES[at].at : at;
+      holdAt = typeof at === "string" ? phases()[at].at : at;
       clearQueue();
       if (holdAt === null) {
         if (morph) animateTo(1, (1 - morph.progress) * morph.duration);
@@ -646,6 +930,7 @@ export const inkPool = (
     duration: () => target.duration,
     queue,
     reduced: () => reducedMotion.matches,
+    phases: () => phasesFor(target),
   });
 
   const canvas = document.createElement("canvas");
@@ -725,7 +1010,7 @@ export const inkPool = (
   const report = () => {
     const { morph } = timeline.view();
     const t = morph ? morph.progress : 1;
-    const next = morph ? phaseAt(t) : "settled";
+    const next = morph ? phaseAt(t, phasesFor(target)) : "settled";
     if (next !== phase) onPhase?.((phase = next));
     onProgress?.(t);
   };
@@ -803,7 +1088,9 @@ export const inkPool = (
     renderer.resize(layout);
     measureRoom();
     breathe();
-    paint();
+    // Now, even mid-morph: sizing the canvas cleared it, and the next frame
+    // would show it empty.
+    render();
   };
   resize();
   const observer = new ResizeObserver(resize);
@@ -848,6 +1135,7 @@ export const inkPool = (
       wake();
     },
     set,
+    phases: () => phasesFor(target),
     teardown: () => {
       cancelAnimationFrame(frame);
       cancelAnimationFrame(easing);

@@ -105,6 +105,15 @@ pool.hold(null); // lets it finish
 
 The stops are `start`, `melting`, `pooled`, `forming` and `settled`, or any number from 0 to 1.
 
+### Run it up the page
+
+```ts
+pool.set({ turn: 1 }); // turns to run up the element, eased
+pool.set({ turn: 0 }); // and back
+```
+
+The glyph turns inside the canvas, so the element never changes size. Make the element tall enough for the glyph turned: it runs the element's height.
+
 ### Dark mode
 
 The ink is the element's `color`, and the pool notices when it changes. Nothing to call.
@@ -175,6 +184,7 @@ Same idea anywhere else: make it once, `show` when it changes, `teardown` when i
 | `pool.show(glyph, { replace })`  | Skips the line: it starts now, and anything waiting goes.                |
 | `pool.hold(stop)`                | Freezes it at a stop. `null` lets go.                                    |
 | `pool.set(settings, { ease })`   | Eases to new settings, only the ones you pass. `ease` is in ms, 0 snaps. |
+| `pool.phases()`                  | Where each stop falls in a morph, as shares of it, for these settings.  |
 | `pool.teardown()`                | Stops it and removes the canvas.                                         |
 
 Options: `draw` (above), `queue` (how many glyphs can wait, `3` by default; `0` cuts a morph short instead), `room` (above), and `onPhase` / `onProgress` to follow along while it moves.
@@ -194,6 +204,7 @@ Options: `draw` (above), `queue` (how many glyphs can wait, `3` by default; `0` 
 | `fadeStart` | `100`   | 0–100%     | Fades out downward from here. `100` is off. |
 | `fadeEnd`   | `100`   | 0–100%     | Gone by here.                               |
 | `breathe`   | `0`     | 0–6s       | A slow pulse at rest. `0` is off.           |
+| `turn`      | `0`     | 0–1        | `1` runs it up the page; it turns between.  |
 
 The playground's presets are good starting points: **Glass** (the defaults), **Backdrop** (faint, fading, breathing, for behind copy), **Syrup** (slow and heavy), **Snap** (barely pools), **Mercury** (hard beads) and **Smoke** (soft and drifty).
 
