@@ -42,11 +42,11 @@ Give it an element. The CSS on that element sets the size, font and color:
 Then show it something:
 
 ```ts
-import { inkPool, DEFAULTS } from "./pool";
+import { inkPool } from "./pool";
 
-const pool = inkPool(document.querySelector<HTMLElement>(".glyph")!, DEFAULTS);
+const pool = inkPool(document.querySelector<HTMLElement>(".glyph")!);
 
-pool.show("A");
+pool.show("A"); // the first glyph just appears
 pool.show("B"); // A pools into B
 ```
 
@@ -58,22 +58,29 @@ That's it. The rest is optional.
 
 ```ts
 const words = ["INK", "POOL", "MELT"];
-let i = 0;
-pool.show(words[0]);
-setInterval(() => pool.show(words[++i % words.length]), 2500);
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+for (let i = 0; ; i++) {
+  await pool.show(words[i % words.length]);
+  await sleep(1500);
+}
 ```
 
-Keep the interval longer than `duration` (950ms) so each one gets a moment to sit.
+`show` resolves once its glyph settles, so each word sits for 1.5s however long its morph took. It resolves `false` if something replaced the glyph first.
 
 ### Your own settings
 
 Tune it in the playground, open **Settings** and hit **Copy settings**. You only get what you changed:
 
 ```ts
-const pool = inkPool(el, { ...DEFAULTS, spread: 0.1, sink: 12 });
+const pool = inkPool(el, { spread: 0.1, sink: 12 });
 ```
 
-`pool.set()` changes them later, even mid-morph.
+`pool.set()` changes them later, even mid-morph. Pass only what changes. It eases there over half a second; `{ ease: 0 }` snaps, for a slider mid-drag, and `{ ease: 900 }` takes longer.
+
+```ts
+pool.set({ hardness: 8 });
+```
 
 ### Sentences
 
@@ -82,6 +89,12 @@ pool.show("Ink runs into ink");
 ```
 
 Long text wraps and shrinks to fit, and the effect scales down with it. Give paragraphs time to be read before you swap them.
+
+If something sits over part of the element, say where the text may go. `room` is read each time a glyph shows, in px down the element:
+
+```ts
+const pool = inkPool(el, {}, { room: () => ({ top: 80, bottom: 420 }) });
+```
 
 ### Freeze it
 
@@ -94,7 +107,7 @@ The stops are `start`, `melting`, `pooled`, `forming` and `settled`, or any numb
 
 ### Dark mode
 
-The ink is the element's `color`. If that changes, call `pool.set(DEFAULTS)` (or your settings) so it notices.
+The ink is the element's `color`, and the pool notices when it changes. Nothing to call.
 
 <details>
 <summary><b>Shapes</b></summary>
@@ -102,7 +115,7 @@ The ink is the element's `color`. If that changes, call `pool.set(DEFAULTS)` (or
 Pass `draw` to draw anything. Draw it in any color, the pool inks it.
 
 ```ts
-import { inkPool, DEFAULTS, type Draw } from "./pool";
+import { inkPool, type Draw } from "./pool";
 
 const draw: Draw = (ctx, key, { width, height, size }) => {
   ctx.beginPath();
@@ -116,7 +129,7 @@ const draw: Draw = (ctx, key, { width, height, size }) => {
   ctx.fill();
 };
 
-const pool = inkPool(el, DEFAULTS, { draw });
+const pool = inkPool(el, {}, { draw });
 pool.show("small");
 pool.show("big");
 ```
@@ -130,18 +143,20 @@ If you draw something smaller than `size`, return how much smaller (`0.5`, say) 
 
 ```tsx
 import { useEffect, useRef } from "react";
-import { inkPool, DEFAULTS } from "./pool";
+import { inkPool, type Pool } from "./pool";
 
 export const InkGlyph = ({ text }: { text: string }) => {
   const el = useRef<HTMLDivElement>(null);
-  const pool = useRef<ReturnType<typeof inkPool> | null>(null);
+  const pool = useRef<Pool | null>(null);
 
   useEffect(() => {
-    pool.current = inkPool(el.current!, DEFAULTS);
+    pool.current = inkPool(el.current!);
     return () => pool.current?.teardown();
   }, []);
 
-  useEffect(() => pool.current?.show(text), [text]);
+  useEffect(() => {
+    pool.current?.show(text);
+  }, [text]);
 
   return <div ref={el} className="glyph" role="img" aria-label={text} />;
 };
@@ -153,16 +168,16 @@ Same idea anywhere else: make it once, `show` when it changes, `teardown` when i
 
 ## API
 
-| Call                             | Does                                                       |
-| -------------------------------- | ---------------------------------------------------------- |
-| `inkPool(el, settings, options)` | Starts a pool in `el`. Both after `el` are optional.       |
-| `pool.show(glyph)`               | Shows a glyph. If one's still morphing, it waits its turn. |
-| `pool.show(glyph, { replace })`  | Skips the line: it starts now, and anything waiting goes.  |
-| `pool.hold(stop)`                | Freezes it at a stop. `null` lets go.                      |
-| `pool.set(settings)`             | New settings, and it rereads the color.                    |
-| `pool.teardown()`                | Stops it and removes the canvas.                           |
+| Call                             | Does                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| `inkPool(el, settings, options)` | Starts a pool in `el`. Both after `el` are optional.                     |
+| `pool.show(glyph)`               | Shows a glyph, after any still morphing. Resolves when it settles.       |
+| `pool.show(glyph, { replace })`  | Skips the line: it starts now, and anything waiting goes.                |
+| `pool.hold(stop)`                | Freezes it at a stop. `null` lets go.                                    |
+| `pool.set(settings, { ease })`   | Eases to new settings, only the ones you pass. `ease` is in ms, 0 snaps. |
+| `pool.teardown()`                | Stops it and removes the canvas.                                         |
 
-Options: `draw` (above), `queue` (how many glyphs can wait, `3` by default), and `onPhase` / `onProgress` if you want to follow along.
+Options: `draw` (above), `queue` (how many glyphs can wait, `3` by default; `0` cuts a morph short instead), `room` (above), and `onPhase` / `onProgress` to follow along while it moves.
 
 ## Settings
 
@@ -189,6 +204,7 @@ The playground's presets are good starting points: **Glass** (the defaults), **B
 - No WebGL2? It still shows the glyph, it just won't morph.
 - It only draws while something's moving.
 - Cut a morph short and the next picks up the pool where it is, so it never jumps.
+- Agents can read [llms.txt](https://ink-pool.jsfowles.com/llms.txt), with the README and the source of `pool.ts` in one file at [llms-full.txt](https://ink-pool.jsfowles.com/llms-full.txt).
 
 > [!NOTE]
 > I've mostly tested it in Chrome. Safari and Firefox should be fine, but check.
@@ -200,7 +216,7 @@ npm install
 npm run dev
 ```
 
-It's an Astro page. Press any key to write it, or <kbd>←</kbd> <kbd>→</kbd> to step through a set. `npm run check` typechecks and formats. The effect is `src/pool.ts`, everything else is the playground.
+It's an Astro page. Press any key to write it, or <kbd>←</kbd> <kbd>→</kbd> to step through a set. `npm run check` typechecks and formats, and `npm test` steps the morph timeline on a fake clock. The effect is `src/pool.ts`, everything else is the playground.
 
 ## License
 

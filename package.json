@@ -9,6 +9,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "format": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore --ignore-path .git/info/exclude",
+    "test": "node --test test/*.test.ts",
     "check": "astro check && prettier --check . --ignore-path .gitignore --ignore-path .prettierignore --ignore-path .git/info/exclude"
   },
   "dependencies": {

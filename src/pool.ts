@@ -1,8 +1,16 @@
-// Ink pool: a glyph that melts into the next one. WebGL2, no dependencies.
+// Ink pool: a glyph that melts into the next. WebGL2, no dependencies.
+// Docs: https://ink-pool.jsfowles.com/llms-full.txt
 //
-//   const pool = inkPool(el, DEFAULTS);
-//   pool.show("A");
-//   pool.show("B"); // A pools into B
+//   const pool = inkPool(el, { spread: 0.1 }); // el's CSS sets size, font, color
+//   await pool.show("A");              // the first glyph just appears
+//   pool.show("B");                    // A pools into B; resolves when B settles
+//   pool.show("C", { replace: true }); // skips the line and starts now
+//   pool.hold("pooled");               // freezes at a phase or 0–1; null lets go
+//   pool.set({ sink: 12 });            // eases to new settings; { ease: 0 } snaps
+//   pool.teardown();
+//
+// Options: draw (your own glyphs), queue (how many may wait, 3; 0 cuts short),
+// room (where text may sit), onPhase, onProgress.
 
 export type Settings = {
   duration: number; // ms
@@ -41,11 +49,14 @@ export const PHASES = {
 
 export type Phase = keyof typeof PHASES | "settled";
 
+export type Room = { top: number; bottom: number };
+
 export type Stage = {
   width: number;
   height: number;
   size: number;
   font: string;
+  room?: Room; // px down the stage
 };
 
 // Draws `key` centred on the stage, in any color. Drawn smaller than
@@ -61,12 +72,41 @@ export type Options = {
   onPhase?: (phase: Phase) => void;
   onProgress?: (t: number) => void;
   queue?: number; // how many glyphs may wait; 0 cuts a morph short instead
+  room?: () => Room | null; // where text may sit, read as each glyph shows
 };
 
-type Morph = { from: string; to: string; progress: number; duration: number };
+export type Pool = {
+  show: (glyph: string, options?: { replace?: boolean }) => Promise<boolean>;
+  hold: (at: Phase | number | null) => void;
+  set: (settings: Partial<Settings>, options?: { ease?: number }) => void;
+  teardown: () => void;
+};
+
+// A show's promise: true once its glyph settles, false if it never does.
+type Ticket = {
+  key: string;
+  done: (settled: boolean) => void;
+  settled: Promise<boolean>;
+};
+type Morph = {
+  from: string;
+  to: string;
+  progress: number;
+  duration: number;
+  ticket?: Ticket;
+};
+type View = { morph: Morph | null; current: string };
 // width and height are device pixels.
 type Layout = { dpr: number; width: number; height: number; stage: Stage };
 type Glyph = { texture: WebGLTexture; scale: number | null };
+type Renderer = {
+  resize: (layout: Layout) => void;
+  render: (view: View, settings: Settings, ink: number[]) => number;
+  clearGlyphs: () => void;
+};
+
+// How long set() eases, in ms.
+const EASE = 500;
 
 const clamp = (x: number, min: number, max: number) =>
   Math.min(Math.max(x, min), max);
@@ -131,8 +171,8 @@ uniform sampler2D fromGlyph, toGlyph;
 uniform vec2 fromOffset, toOffset;
 uniform float fromWeight, toWeight;
 void main() {
-  float a = texture(fromGlyph, uv + fromOffset).r * fromWeight;
-  float b = texture(toGlyph, uv + toOffset).r * toWeight;
+  float a = texture(fromGlyph, uv + fromOffset).a * fromWeight;
+  float b = texture(toGlyph, uv + toOffset).a * toWeight;
   color = vec4(1.0 - (1.0 - a) * (1.0 - b));
 }`;
 
@@ -213,7 +253,10 @@ const createPass = (gl: WebGL2RenderingContext, fragment: string) => {
   };
 };
 
-const createRenderer = (gl: WebGL2RenderingContext, drawGlyph: Draw) => {
+const createRenderer = (
+  gl: WebGL2RenderingContext,
+  drawGlyph: Draw,
+): Renderer => {
   const createTexture = (minFilter: number = gl.LINEAR) => {
     const texture = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -293,12 +336,18 @@ const createRenderer = (gl: WebGL2RenderingContext, drawGlyph: Draw) => {
     const ctx = scratch.getContext("2d")!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, stage.width, stage.height);
-    ctx.fillStyle = ctx.strokeStyle = "#fff";
     const drawn = drawGlyph(ctx, key, stage);
     const texture = createTexture(gl.LINEAR_MIPMAP_LINEAR);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, gl.RED, gl.UNSIGNED_BYTE, scratch);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      scratch,
+    );
     gl.generateMipmap(gl.TEXTURE_2D);
     glyph = { texture, scale: drawn && drawn > 0 ? drawn : 1 };
     glyphs.set(key, glyph);
@@ -312,8 +361,7 @@ const createRenderer = (gl: WebGL2RenderingContext, drawGlyph: Draw) => {
   };
 
   const render = (
-    morph: Morph | null,
-    current: string,
+    { morph, current }: View,
     settings: Settings,
     ink: number[],
   ) => {
@@ -401,41 +449,228 @@ const createRenderer = (gl: WebGL2RenderingContext, drawGlyph: Draw) => {
   return { resize, render, clearGlyphs };
 };
 
-export const inkPool = (
-  root: HTMLElement,
-  initial: Settings = DEFAULTS,
-  { draw = drawText, onPhase, onProgress, queue: queueLimit = 3 }: Options = {},
-) => {
-  let settings = { ...initial };
-  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+// Without WebGL2, a 2D canvas shows each glyph at rest.
+const createFlat = (
+  ctx: CanvasRenderingContext2D,
+  drawGlyph: Draw,
+): Renderer => {
+  let layout: Layout;
+  return {
+    resize: (next) => (layout = next),
+    render: ({ current }, settings, ink) => {
+      const { dpr, stage } = layout;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, stage.width, stage.height);
+      ctx.fillStyle = ctx.strokeStyle = `rgb(${ink.map((c) => c * 255)})`;
+      ctx.globalAlpha = settings.opacity;
+      return drawGlyph(ctx, current, stage) || 1;
+    },
+    clearGlyphs: () => {},
+  };
+};
 
-  const canvas = document.createElement("canvas");
-  canvas.setAttribute("aria-hidden", "true");
-  canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%";
-  if (getComputedStyle(root).position === "static")
-    root.style.position = "relative";
-  root.append(canvas);
+const ticket = (key: string): Ticket => {
+  let done!: (settled: boolean) => void;
+  const settled = new Promise<boolean>((resolve) => (done = resolve));
+  return { key, done, settled };
+};
 
-  // Without WebGL2, a 2D canvas shows each glyph at rest.
-  const gl = canvas.getContext("webgl2", {
-    premultipliedAlpha: true,
-    antialias: false,
-  });
-  let renderer = gl && createRenderer(gl, draw);
-  const ctx2d = gl ? null : canvas.getContext("2d");
-
+// The morphs over time: what shows, what waits, how far along. It runs on the
+// clock it's given, so it steps without a browser.
+export const createTimeline = ({
+  now,
+  duration,
+  queue: limit = 3,
+  reduced = () => false,
+}: {
+  now: () => number;
+  duration: () => number; // ms
+  queue?: number;
+  reduced?: () => boolean;
+}) => {
   let current = "";
   let previous = "";
   let started = false;
   let morph: Morph | null = null;
   let holdAt: number | null = null;
-  const queue: string[] = [];
+  let moving = false;
+  let tween = { from: 0, to: 1, start: 0, duration: 0 };
+  const queue: Ticket[] = [];
+
+  const clearQueue = () => queue.splice(0).forEach((t) => t.done(false));
+
+  const animateTo = (to: number, ms: number) => {
+    if (!morph) return;
+    const duration = reduced() ? 0 : ms;
+    tween = { from: morph.progress, to, start: now(), duration };
+    moving = true;
+  };
+
+  const glideTo = (to: number) => {
+    const ms = Math.abs(to - (morph?.progress ?? 0)) * duration();
+    animateTo(to, Math.max(180, ms));
+  };
+
+  const start = (next: Ticket) => {
+    // Quicker with a backlog, down to a third of the duration.
+    const pace = Math.max(0.35, 1 / (1 + queue.length * 0.6));
+    const ms = duration() * pace;
+    // Cut short, it picks up the pool as it is: from whichever glyph shows
+    // more, as far in as the old morph had melted.
+    const t = morph ? morph.progress : 0;
+    const from = morph && t < 0.5 ? morph.from : current;
+    const progress = Math.min(t, 1 - t);
+    morph?.ticket?.done(false);
+    previous = from;
+    morph = { from, to: next.key, progress, duration: ms, ticket: next };
+    current = next.key;
+    if (holdAt !== null) glideTo(holdAt);
+    else animateTo(1, (1 - progress) * ms);
+  };
+
+  const finish = () => {
+    morph?.ticket?.done(true);
+    morph = null;
+    const next = queue.shift();
+    if (next) start(next);
+  };
+
+  // What a show of `key` waits on when it's already shown or on its way.
+  const pending = (key: string) => {
+    const last = queue.at(-1);
+    if (key !== (last?.key ?? current)) return null;
+    return last?.settled ?? morph?.ticket?.settled ?? Promise.resolve(true);
+  };
+
+  return {
+    show: (key: string, replace = false) => {
+      const next = ticket(key);
+      // The first glyph just appears, and with reduced motion so does each one.
+      if (!started || (reduced() && holdAt === null)) {
+        started = true;
+        previous = current;
+        current = key;
+        morph?.ticket?.done(false);
+        morph = null;
+        moving = false;
+        clearQueue();
+        next.done(true);
+        return next.settled;
+      }
+      if (holdAt !== null) {
+        clearQueue();
+        if (key === current) return pending(key)!;
+        start(next);
+        return next.settled;
+      }
+      if (replace) clearQueue();
+      const waiting = pending(key);
+      if (waiting) return waiting;
+      if (morph && limit > 0 && !replace) {
+        queue.push(next);
+        if (queue.length > limit) queue.shift()!.done(false);
+        return next.settled;
+      }
+      start(next);
+      return next.settled;
+    },
+
+    hold: (at: Phase | number | null) => {
+      if (at === "settled") at = null;
+      holdAt = typeof at === "string" ? PHASES[at].at : at;
+      clearQueue();
+      if (holdAt === null) {
+        if (morph) animateTo(1, (1 - morph.progress) * morph.duration);
+        return;
+      }
+      // At rest, replay the last morph to hold it.
+      if (!morph) {
+        if (!started) return;
+        morph = {
+          from: previous,
+          to: current,
+          progress: 0,
+          duration: duration(),
+        };
+      }
+      glideTo(holdAt);
+    },
+
+    // Moves to now. True while there's more to come.
+    step: () => {
+      if (!morph || !moving) return (moving = false);
+      const { from, to, start: begun, duration: ms } = tween;
+      const k = ms ? Math.min((now() - begun) / ms, 1) : 1;
+      // Linear when playing through, eased when gliding to a hold.
+      morph.progress = from + (to - from) * (holdAt === null ? k : easeOut(k));
+      if (k < 1) return true;
+      moving = false;
+      if (morph.progress >= 1) finish();
+      return moving;
+    },
+
+    // Reduced motion came on: whatever's playing ends now.
+    hurry: () => {
+      if (morph && holdAt === null) animateTo(1, 0);
+    },
+
+    clear: () => {
+      clearQueue();
+      morph?.ticket?.done(false);
+    },
+
+    view: (): View => ({ morph, current }),
+    moving: () => moving,
+  };
+};
+
+const mix = (from: Settings, to: Settings, k: number) => {
+  const out = { ...to };
+  for (const key of Object.keys(to) as (keyof Settings)[])
+    if (key !== "duration" && key !== "breathe")
+      out[key] = from[key] + (to[key] - from[key]) * k;
+  return out;
+};
+
+export const inkPool = (
+  root: HTMLElement,
+  initial: Partial<Settings> = {},
+  { draw = drawText, onPhase, onProgress, queue, room }: Options = {},
+): Pool => {
+  // Where the settings are headed, and where they are on the way there.
+  let target: Settings = { ...DEFAULTS, ...initial };
+  let settings = target;
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const timeline = createTimeline({
+    now: () => performance.now(),
+    duration: () => target.duration,
+    queue,
+    reduced: () => reducedMotion.matches,
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.setAttribute("aria-hidden", "true");
+  // The color transition is only there to say when the color changes.
+  canvas.style.cssText =
+    "position:absolute;inset:0;width:100%;height:100%;transition:color 1ms";
+  if (getComputedStyle(root).position === "static")
+    root.style.position = "relative";
+  root.append(canvas);
+
+  const gl = canvas.getContext("webgl2", {
+    premultipliedAlpha: true,
+    antialias: false,
+  });
+  let renderer = gl
+    ? createRenderer(gl, draw)
+    : createFlat(canvas.getContext("2d")!, draw);
+
   let phase: Phase = "settled";
   let breath: Animation | undefined;
   let ink = [0, 0, 0];
   let filter = "";
   let frame = 0;
-  let tween = { from: 0, to: 1, start: 0, duration: 0 };
+  let easing = 0;
   let layout: Layout;
 
   const readInk = (style = getComputedStyle(root)) => {
@@ -460,6 +695,19 @@ export const inkPool = (
     canvas.height = layout.height;
   };
 
+  // Glyphs drawn for other room get drawn again.
+  const measureRoom = () => {
+    const free = room?.();
+    const next = free && {
+      top: Math.round(free.top),
+      bottom: Math.round(free.bottom),
+    };
+    const was = layout.stage.room;
+    if (next?.top === was?.top && next?.bottom === was?.bottom) return;
+    layout.stage.room = next || undefined;
+    renderer.clearGlyphs();
+  };
+
   // The rest setting, as a CSS blur.
   const soften = (scale: number) => {
     const px = settings.rest * layout.stage.size * scale;
@@ -467,121 +715,43 @@ export const inkPool = (
     if (next !== filter) canvas.style.filter = filter = next;
   };
 
-  const render = () => {
+  const render = () => soften(renderer.render(timeline.view(), settings, ink));
+
+  // Drawn already while a morph runs; otherwise now.
+  const paint = () => {
+    if (!frame) render();
+  };
+
+  const report = () => {
+    const { morph } = timeline.view();
     const t = morph ? morph.progress : 1;
-    const nextPhase = morph ? phaseAt(t) : "settled";
-    if (nextPhase !== phase) {
-      phase = nextPhase;
-      onPhase?.(phase);
-    }
+    const next = morph ? phaseAt(t) : "settled";
+    if (next !== phase) onPhase?.((phase = next));
     onProgress?.(t);
-    if (renderer) soften(renderer.render(morph, current, settings, ink));
-    else if (ctx2d) {
-      const { dpr, stage } = layout;
-      ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx2d.clearRect(0, 0, stage.width, stage.height);
-      ctx2d.fillStyle = ctx2d.strokeStyle = `rgb(${ink.map((c) => c * 255)})`;
-      ctx2d.globalAlpha = settings.opacity;
-      soften(draw(ctx2d, current, stage) || 1);
-    }
   };
 
-  const tick = (now: number) => {
-    if (!morph) return;
-    const { from, to, start, duration } = tween;
-    const k = duration ? Math.min((now - start) / duration, 1) : 1;
-    // Linear when playing through, eased when gliding to a hold.
-    morph.progress = from + (to - from) * (holdAt === null ? k : easeOut(k));
-    render();
-    if (k < 1) {
-      frame = requestAnimationFrame(tick);
-      return;
-    }
+  const loop = () => {
     frame = 0;
-    if (morph.progress >= 1) finishMorph();
-  };
-
-  const animateTo = (to: number, ms: number) => {
-    cancelAnimationFrame(frame);
-    if (!morph) return;
-    const duration = reducedMotion.matches ? 0 : ms;
-    tween = { from: morph.progress, to, start: performance.now(), duration };
-    frame = requestAnimationFrame(tick);
-  };
-
-  const glideTo = (to: number) => {
-    const ms = Math.abs(to - (morph?.progress ?? 0)) * settings.duration;
-    animateTo(to, Math.max(180, ms));
-  };
-
-  const startMorph = (key: string) => {
-    // Quicker with a backlog, down to a third of the duration.
-    const pace = Math.max(0.35, 1 / (1 + queue.length * 0.6));
-    const duration = settings.duration * pace;
-    // Cut short, it picks up the pool as it is: from whichever glyph shows
-    // more, as far in as the old morph had melted.
-    const t = morph ? morph.progress : 0;
-    const from = morph && t < 0.5 ? morph.from : current;
-    const progress = Math.min(t, 1 - t);
-    previous = from;
-    morph = { from, to: key, progress, duration };
-    current = key;
-    if (holdAt !== null) glideTo(holdAt);
-    else animateTo(1, (1 - progress) * duration);
-  };
-
-  const finishMorph = () => {
-    morph = null;
+    const moving = timeline.step();
+    report();
     render();
-    const next = queue.shift();
-    if (next !== undefined) startMorph(next);
+    if (moving) frame = requestAnimationFrame(loop);
   };
 
-  const show = (key: string, { replace = false } = {}) => {
-    // The first glyph just appears, and with reduced motion so does each one.
-    if (!started || (reducedMotion.matches && holdAt === null)) {
-      started = true;
-      previous = current;
-      current = key;
-      morph = null;
-      queue.length = 0;
-      if (!frame) render();
+  // After the timeline changes: run frames, or show where it stands.
+  const wake = () => {
+    if (timeline.moving()) {
+      if (!frame) frame = requestAnimationFrame(loop);
       return;
     }
-    if (holdAt !== null) {
-      queue.length = 0;
-      if (key !== current) startMorph(key);
-      return;
-    }
-    if (replace) queue.length = 0;
-    if (key === (queue.at(-1) ?? current)) return;
-    if (morph && queueLimit > 0 && !replace) {
-      queue.push(key);
-      if (queue.length > queueLimit) queue.shift();
-      return;
-    }
-    startMorph(key);
-  };
-
-  const hold = (at: Phase | number | null) => {
-    if (at === "settled") at = null;
-    holdAt = typeof at === "string" ? PHASES[at].at : at;
-    queue.length = 0;
-    if (holdAt === null) {
-      if (morph) animateTo(1, (1 - morph.progress) * morph.duration);
-      return;
-    }
-    // At rest, replay the last morph to hold it.
-    if (!morph) {
-      if (!started) return;
-      const { duration } = settings;
-      morph = { from: previous, to: current, progress: 0, duration };
-    }
-    glideTo(holdAt);
+    cancelAnimationFrame(frame);
+    frame = 0;
+    report();
+    render();
   };
 
   const breathe = () => {
-    const ms = settings.breathe * 1000;
+    const ms = target.breathe * 1000;
     const on = ms > 0 && !reducedMotion.matches;
     const timing = breath?.effect?.getComputedTiming();
     if (on && breath && timing) {
@@ -606,17 +776,34 @@ export const inkPool = (
     }
   };
 
-  const update = (old: Settings | null) => {
-    if (old) readInk();
-    const breathChanged = !old || old.breathe !== settings.breathe;
-    if (breathChanged || (breath && reducedMotion.matches)) breathe();
-    if (!frame) render();
+  const set = (next: Partial<Settings>, { ease = EASE } = {}) => {
+    const old = target;
+    target = { ...target, ...next };
+    readInk();
+    if (old.breathe !== target.breathe) breathe();
+    cancelAnimationFrame(easing);
+    if (!ease || reducedMotion.matches) {
+      settings = target;
+      paint();
+      return;
+    }
+    const from = settings;
+    const begun = performance.now();
+    const step = () => {
+      const k = easeOut(Math.min((performance.now() - begun) / ease, 1));
+      settings = mix(from, target, k);
+      paint();
+      easing = k < 1 ? requestAnimationFrame(step) : 0;
+    };
+    easing = requestAnimationFrame(step);
   };
 
   const resize = () => {
     measure();
-    renderer?.resize(layout);
-    update(null);
+    renderer.resize(layout);
+    measureRoom();
+    breathe();
+    paint();
   };
   resize();
   const observer = new ResizeObserver(resize);
@@ -624,10 +811,23 @@ export const inkPool = (
 
   // Glyphs drawn before their font loaded get drawn again.
   const refont = () => {
-    renderer?.clearGlyphs();
-    if (!frame) render();
+    renderer.clearGlyphs();
+    paint();
   };
   document.fonts.addEventListener("loadingdone", refont);
+
+  canvas.addEventListener("transitionend", (e) => {
+    if (e.propertyName !== "color") return;
+    readInk();
+    paint();
+  });
+
+  const onReduced = () => {
+    breathe();
+    timeline.hurry();
+    wake();
+  };
+  reducedMotion.addEventListener("change", onReduced);
 
   canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
   canvas.addEventListener("webglcontextrestored", () => {
@@ -637,18 +837,25 @@ export const inkPool = (
   });
 
   return {
-    show,
-    hold,
-    set: (next: Settings) => {
-      const old = settings;
-      settings = { ...next };
-      update(old);
+    show: (glyph, { replace = false } = {}) => {
+      measureRoom();
+      const settled = timeline.show(glyph, replace);
+      wake();
+      return settled;
     },
+    hold: (at) => {
+      timeline.hold(at);
+      wake();
+    },
+    set,
     teardown: () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(easing);
+      timeline.clear();
       breath?.cancel();
       observer.disconnect();
       document.fonts.removeEventListener("loadingdone", refont);
+      reducedMotion.removeEventListener("change", onReduced);
       canvas.remove();
     },
   };

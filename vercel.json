@@ -1,4 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "astro"
+  "framework": "astro",
+  "headers": [
+    {
+      "source": "/pool.ts",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
+        }
+      ]
+    }
+  ]
 }
