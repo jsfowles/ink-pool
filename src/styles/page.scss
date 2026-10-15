@@ -137,6 +137,28 @@
     opacity 150ms var(--ease-out);
 }
 
+// Bigger on a phone, in the same space; a fingertip's worth to press on
+// touch.
+@include phone {
+  .turn svg {
+    width: 20px;
+    height: 20px;
+    margin: -2px;
+  }
+}
+
+@media (pointer: coarse) {
+  .turn::before {
+    content: "";
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    width: 48px;
+    height: 44px;
+    translate: -50% -50%;
+  }
+}
+
 .turn[aria-pressed="true"] svg {
   rotate: -90deg;
   opacity: 1;
@@ -313,6 +335,15 @@
   width: 1em;
   height: 1lh;
   vertical-align: top;
+
+  // On touch, a fingertip's worth to press, out to half the gap each side.
+  @media (pointer: coarse) {
+    &::before {
+      content: "";
+      position: absolute;
+      inset: -8px -11px 0;
+    }
+  }
 }
 
 .icon {

@@ -170,6 +170,63 @@ export const startLedger = (onChange: Change, source: string) => {
     if (e.key === "Escape" && isOpen()) close();
   });
 
+  // Upright it's a sheet from the foot: a tap off it only closes it, and a
+  // swipe down from the top of its scroll takes it with the finger, closing
+  // past a third of its height or on a flick.
+  const sheet = matchMedia(
+    "(max-width: 599px), (max-width: 1100px) and (orientation: portrait)",
+  );
+  document.addEventListener(
+    "click",
+    (e) => {
+      const at = e.target as Node;
+      if (!isOpen() || !sheet.matches || ledger.contains(at)) return;
+      if (openers.some((b) => b.contains(at))) return;
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    },
+    true,
+  );
+  let from = 0;
+  let began = 0;
+  let pulled = 0;
+  let pulling = false;
+  ledger.addEventListener(
+    "touchstart",
+    (e) => {
+      const slider = (e.target as Element).closest('input[type="range"]');
+      pulling = sheet.matches && !slider && ledger.scrollTop <= 0;
+      from = e.touches[0].clientY;
+      began = performance.now();
+      pulled = 0;
+    },
+    { passive: true },
+  );
+  ledger.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!pulling) return;
+      pulled = Math.max(0, e.touches[0].clientY - from);
+      // Up is a scroll of what's in it.
+      if (!pulled) return (ledger.style.translate = "");
+      e.preventDefault();
+      ledger.style.transition = "none";
+      ledger.style.translate = `0 ${pulled}px`;
+    },
+    { passive: false },
+  );
+  const letGo = () => {
+    if (!pulling) return;
+    pulling = false;
+    const flick = pulled / (performance.now() - began) > 0.5 && pulled > 30;
+    ledger.style.transition = "";
+    ledger.style.translate = "";
+    if (flick || pulled > ledger.offsetHeight / 3) close();
+  };
+  ledger.addEventListener("touchend", letGo);
+  ledger.addEventListener("touchcancel", letGo);
+
   ledger.inert = true;
   show();
   return {
