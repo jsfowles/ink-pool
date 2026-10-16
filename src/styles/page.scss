@@ -120,6 +120,22 @@
   height: 100%;
 }
 
+// The print toggle: dots, like the screen it lays over the glyph.
+.print svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: #fff;
+  mix-blend-mode: difference;
+  opacity: 0.5;
+  will-change: transform;
+  transition: opacity 150ms var(--ease-out);
+}
+
+.print[aria-pressed="true"] svg {
+  opacity: 1;
+}
+
 // Its lines show which way the glyph reads.
 .turn svg {
   display: block;

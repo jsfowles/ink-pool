@@ -53,4 +53,16 @@ export const PRESETS: Record<string, { note: string; settings: Settings }> = {
       rest: 0.003,
     },
   },
+  Newsprint: {
+    note: "Printed through a dot screen, melting in dots",
+    settings: {
+      ...DEFAULTS,
+      duration: 1200,
+      spread: 0.08,
+      hardness: 10,
+      threshold: 0.38,
+      rest: 0.03,
+      dots: 6,
+    },
+  },
 };

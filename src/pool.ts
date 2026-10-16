@@ -27,6 +27,8 @@ export type Settings = {
   fadeEnd: number; // %
   breathe: number; // s, 0 is off
   turn: number; // 0 runs across, 1 up the page
+  dots: number; // px, a halftone screen's cell; 0 is off
+  angle: number; // °, the screen's
 };
 
 export const DEFAULTS: Settings = {
@@ -42,6 +44,8 @@ export const DEFAULTS: Settings = {
   fadeEnd: 100,
   breathe: 0,
   turn: 0,
+  dots: 0,
+  angle: 45,
 };
 
 // Where a morph's phases fall, as shares of it: `at` is the moment that shows
@@ -358,17 +362,90 @@ void main() {
 // A hard threshold, antialiased with fwidth, then the fade and opacity.
 const CUT = `${HEADER}
 uniform sampler2D field;
-uniform vec2 uvScale, uvMax;
+uniform vec2 uvScale, uvMax, frame, screen;
 uniform vec3 ink;
-uniform float hardness, threshold, opacity, fadeStart, fadeEnd;
+uniform float hardness, threshold, opacity, fadeStart, fadeEnd, cell, bright;
+uniform float radii[65];
+uniform vec2 shadowAt;
+float density(vec2 at) { return texture(field, min(at * uvScale, uvMax)).r; }
+float cut(float d) { return clamp(hardness * (d - threshold) + 0.5, 0.0, 1.0); }
+// The ink as a surface lit from the top left: domed like a drop, so it
+// curves hardest at its edge, and how bright it is at a cell's centre.
+float height(vec2 at) {
+  return sqrt(clamp((density(at) - threshold) / (1.0 - threshold), 0.0, 1.0));
+}
+float lit(vec2 at) {
+  vec2 e = vec2(cell) / frame;
+  float dx = height(at + vec2(e.x, 0.0)) - height(at - vec2(e.x, 0.0));
+  float dy = height(at + vec2(0.0, e.y)) - height(at - vec2(0.0, e.y));
+  vec3 n = normalize(vec3(-dx * 6.0, -dy * 6.0, 1.0));
+  vec3 l = normalize(vec3(-0.55, 0.65, 0.75));
+  float spec = pow(max(dot(reflect(-l, n), vec3(0.0, 0.0, 1.0)), 0.0), 20.0);
+  return clamp(0.08 + 0.85 * max(dot(n, l), 0.0) + 0.6 * spec, 0.0, 1.0);
+}
+// How much of a cell the screen inks: the lit glyph inside its own edge, and
+// off it, the shadow it casts down and to the right. Light ink, on the dark
+// glass, inks the light; dark ink inks the shade.
+float coverage(vec2 at) {
+  float shine = lit(at);
+  float tone = bright > 0.5 ? shine : 1.0 - shine;
+  float shadow = bright > 0.5 ? 0.0 : 0.38 * cut(density(at + shadowAt) + 0.1);
+  return mix(shadow, tone, cut(density(at)));
+}
+// The radius, in cells, of a round dot that inks a share of its cell: read
+// off a table of area, not width.
+float radius(float c) {
+  float x = clamp(c, 0.0, 1.0) * 64.0;
+  int i = int(min(floor(x), 63.0));
+  return mix(radii[i], radii[i + 1], x - float(i));
+}
+// The four dots whose cells meet around here, each sized by the ink at its
+// centre, as one shape.
+float screened() {
+  mat2 turn = mat2(screen.x, screen.y, -screen.y, screen.x);
+  vec2 g = transpose(turn) * (uv * frame) / cell;
+  vec2 base = floor(g);
+  float alpha = 0.0;
+  for (int i = 0; i < 4; i++) {
+    vec2 c = base + vec2(float(i & 1), float(i >> 1));
+    float r = radius(coverage(turn * c * cell / frame));
+    if (r < 0.03) continue;
+    alpha = max(alpha, clamp((r - length(g - c)) * cell + 0.5, 0.0, 1.0));
+  }
+  return alpha;
+}
 void main() {
-  float inside = hardness * (texture(field, min(uv * uvScale, uvMax)).r - threshold);
-  float alpha = clamp((inside - 0.5) / max(fwidth(inside), 1.0) + 0.5, 0.0, 1.0);
+  float inside = hardness * (density(uv) - threshold);
+  float alpha = cell > 1.5
+    ? screened()
+    : clamp((inside - 0.5) / max(fwidth(inside), 1.0) + 0.5, 0.0, 1.0);
   float down = 1.0 - uv.y;
   alpha *= 1.0 - clamp((down - fadeStart) / max(fadeEnd - fadeStart, 1e-4), 0.0, 1.0);
   alpha *= opacity;
   color = vec4(ink * alpha, alpha);
 }`;
+
+// A round dot on a square screen, by the share of its cell it inks: pi r^2
+// until it touches its neighbours at r = 1/2, then less the four caps past the
+// cell's sides, until it fills the cell at r = 1/sqrt(2). Inverted here into
+// the radius for each share from 0 to 1, in 64 steps.
+const inked = (r: number) =>
+  r <= 0.5
+    ? Math.PI * r * r
+    : Math.min(
+        1,
+        Math.PI * r * r -
+          4 * (r * r * Math.acos(0.5 / r) - 0.5 * Math.sqrt(r * r - 0.25)),
+      );
+const RADII = Array.from({ length: 65 }, (_, i) => {
+  let [lo, hi] = [0, Math.SQRT1_2];
+  for (let k = 0; k < 40; k++) {
+    const mid = (lo + hi) / 2;
+    if (inked(mid) < i / 64) lo = mid;
+    else hi = mid;
+  }
+  return hi;
+});
 
 // Compiles a shader into a function that binds its textures, sets its
 // uniforms, and draws.
@@ -407,7 +484,8 @@ const createPass = (gl: WebGL2RenderingContext, fragment: string) => {
       if (typeof v === "number") gl.uniform1f(at(name), v);
       else if (v.length === 2) gl.uniform2f(at(name), v[0], v[1]);
       else if (v.length === 3) gl.uniform3f(at(name), v[0], v[1], v[2]);
-      else gl.uniformMatrix2fv(at(name), false, v);
+      else if (v.length === 4) gl.uniformMatrix2fv(at(name), false, v);
+      else gl.uniform1fv(at(name), v);
     }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
@@ -650,9 +728,14 @@ const createRenderer = (
       unit(from, fromShow.size) ?? unit(to, toShow.size) ?? stage.size;
     const toUnit = unit(to, toShow.size) ?? fromUnit;
     const size = (fromUnit + (toUnit - fromUnit) * blend) * dpr;
-    const sigma = morph
-      ? Math.sin(Math.PI * t) ** 1.4 * settings.spread * size
-      : 0;
+    // Through a screen it blurs first, by 0.4 of a cell, so no detail finer
+    // than the screen beats against it, or by the rest blur if that's more;
+    // blurs add in quadrature.
+    const cell = settings.dots * dpr;
+    const sigma = Math.hypot(
+      morph ? Math.sin(Math.PI * t) ** 1.4 * settings.spread * size : 0,
+      cell > 1.5 ? Math.max(0.4 * cell, settings.rest * size) : 0,
+    );
     const sink = morph
       ? (smoothstep(0, 1, t) * settings.sink * fromUnit * dpr) / 100
       : 0;
@@ -720,6 +803,16 @@ const createRenderer = (
         opacity,
         fadeStart: fade ? fadeStart / 100 : 2,
         fadeEnd: fade ? fadeEnd / 100 : 3,
+        frame: [width, height],
+        cell,
+        radii: RADII,
+        bright:
+          ink[0] * 0.2126 + ink[1] * 0.7152 + ink[2] * 0.0722 > 0.5 ? 1 : 0,
+        shadowAt: [(-0.025 * size) / width, (0.025 * size) / height],
+        screen: [
+          Math.cos((settings.angle * Math.PI) / 180),
+          Math.sin((settings.angle * Math.PI) / 180),
+        ],
       },
     );
     return size / dpr / stage.size;
@@ -996,7 +1089,8 @@ export const inkPool = (
 
   // The rest setting, as a CSS blur.
   const soften = (scale: number) => {
-    const px = settings.rest * layout.stage.size * scale;
+    // A screen's dots stay sharp.
+    const px = settings.dots ? 0 : settings.rest * layout.stage.size * scale;
     const next = px > 0 ? `blur(${px.toFixed(2)}px)` : "";
     if (next !== filter) canvas.style.filter = filter = next;
   };

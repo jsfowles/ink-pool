@@ -46,6 +46,14 @@ export const GROUPS: Group[] = [
     ],
   },
   {
+    id: "screen",
+    label: "Screen",
+    controls: [
+      range("dots", "Dots", 0, 24, 0.5, "px", 0),
+      range("angle", "Angle", 0, 90, 1, "°"),
+    ],
+  },
+  {
     id: "rest",
     label: "At rest",
     controls: [

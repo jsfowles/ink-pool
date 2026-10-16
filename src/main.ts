@@ -108,13 +108,25 @@ let touring = true;
 let tourStep = false;
 // How far the glyph is turned: 1 runs it up the page.
 let turned = 0;
+// The halftone screen, over whichever preset is chosen; on by default here.
+let printing = true;
+const screened = ({ dots }: { dots: number }) => (printing ? dots || 6 : dots);
+// Printed, a glyph rests rounded, so the light has something to shade.
+const rounded = ({ rest }: { rest: number }) =>
+  printing ? Math.max(rest, 0.03) : rest;
 // Paused, the glyph holds its breath too.
 const breathing = ({ breathe }: { breathe: number }) =>
   $<HTMLInputElement>("auto").checked ? breathe : 0;
 const ledger = startLedger((settings, { live, preset }) => {
   // A preset eases in; a slider follows the hand. Either keeps the turn.
   pool.set(
-    { ...settings, turn: turned, breathe: breathing(settings) },
+    {
+      ...settings,
+      turn: turned,
+      breathe: breathing(settings),
+      dots: screened(settings),
+      rest: rounded(settings),
+    },
     { ease: preset ? 600 : 0 },
   );
   if (!tourStep) touring = false;
@@ -126,9 +138,23 @@ const ledger = startLedger((settings, { live, preset }) => {
   keepWriting();
 }, source);
 pool.set(
-  { ...ledger.settings(), breathe: breathing(ledger.settings()) },
+  {
+    ...ledger.settings(),
+    breathe: breathing(ledger.settings()),
+    dots: screened(ledger.settings()),
+    rest: rounded(ledger.settings()),
+  },
   { ease: 0 },
 );
+const print = $<HTMLButtonElement>("print");
+print.addEventListener("click", () => {
+  printing = !printing;
+  print.ariaPressed = String(printing);
+  pool.set({
+    dots: screened(ledger.settings()),
+    rest: rounded(ledger.settings()),
+  });
+});
 
 let set = 0;
 let at = 0;
