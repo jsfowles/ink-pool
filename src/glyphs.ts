@@ -62,7 +62,12 @@ export const SETS: GlyphSet[] = [
   {
     id: "type",
     label: "Type",
-    keys: [..."0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"].map((c) => `text:${c}`),
+    // Figures and capitals, then the Latin letters and signs Poppins draws.
+    keys: [
+      ..."0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+      ..."ÁÄÅÆÇÉÊÑÖØŒÜÐÞß",
+      ..."&@#?!¿¡%€£$§¶*+©™",
+    ].map((c) => `text:${c}`),
   },
   {
     id: "shapes",
@@ -165,7 +170,9 @@ export const draw: Draw = (
     ctx.letterSpacing = word ? `${px * 0.02}px` : "0px";
   };
   const max = word ? size * 0.72 : size;
-  const room = width * 0.9;
+  // A single character no wider than most, so a W, an Æ or an @ shrinks to
+  // fit rather than reaching past the rest.
+  const room = kind === "text" ? Math.min(width, size) * 0.9 : width * 0.9;
   const words = value.split(/\s+/).filter(Boolean);
   if (words.length < 2) {
     set(max);

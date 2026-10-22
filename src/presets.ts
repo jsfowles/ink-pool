@@ -28,9 +28,28 @@ export const PRESETS: Record<string, { note: string; settings: Settings }> = {
       rise: 8,
     },
   },
-  Snap: {
-    note: "Nearly a cut: barely pools",
-    settings: { ...DEFAULTS, duration: 560, spread: 0.015, sink: 2, rise: 1 },
+  Drip: {
+    note: "Gravity: the old glyph runs down, the next drops in",
+    settings: {
+      ...DEFAULTS,
+      duration: 1400,
+      spread: 0.05,
+      hardness: 28,
+      threshold: 0.44,
+      sink: 24,
+      rise: 14,
+    },
+  },
+  Crisp: {
+    note: "Quick and clean: the letters touch, then firm up",
+    settings: {
+      ...DEFAULTS,
+      duration: 750,
+      spread: 0.03,
+      hardness: 30,
+      sink: 4,
+      rise: 3,
+    },
   },
   Mercury: {
     note: "Strands snap into hard, bright beads",

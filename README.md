@@ -152,7 +152,7 @@ Options: `draw`, `room`, `queue` (how many glyphs can wait, `3`; `0` cuts a morp
 | `breathe`   | `0`     | 0–6s       | A slow pulse at rest. `0` is off.           |
 | `turn`      | `0`     | 0–1        | `1` runs it up the page.                    |
 
-The playground's presets make good starting points: Glass (the defaults), Backdrop (faint, for behind copy), Syrup, Snap, Mercury and Smoke.
+The playground's presets make good starting points: Glass (the defaults), Backdrop (faint, for behind copy), Syrup, Drip, Crisp, Mercury and Smoke.
 
 ## Good to know
 

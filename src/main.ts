@@ -25,28 +25,60 @@ const holds = [
   ...$("phases").querySelectorAll<HTMLButtonElement>("[data-hold]"),
 ];
 // The phase dot runs down the names with the morph and rests on "settled"
-// with the glyph; the next morph inks it back in at the start. Each name
-// brightens as it passes. It's on a name while the pool's phases say so:
-// leaving the start as the glyph starts melting, and reaching "settled" as it
-// settles, for the settings it has.
+// with the glyph, reaching each name as its phase shows best, for the
+// settings it has. It's drawn out by its speed like the presets' dot, and
+// runs back up to the start as the next morph begins. Each name brightens as
+// it passes.
 const stopsNow = () => {
   const { start, melting, pooled, forming } = pool.phases();
   return [start.until, melting.at, pooled.at, forming.at, forming.until];
 };
-const END = phases.length - 1;
 const phaseDot = inkDot($("phase-mark"), holds);
-const near: string[] = [];
-const moveDot = (at: number) => {
-  phaseDot.to(at);
-  for (const [i, li] of phases.entries()) {
-    const n = Math.max(0, 1 - Math.abs(at - i)).toFixed(2);
-    if (n === near[i]) continue;
-    near[i] = n;
-    li.style.setProperty("--near", n);
-  }
+const END = phases.length - 1;
+const glide = { at: 0, to: 0, v: 0, speed: 0, back: false, frame: 0, last: 0 };
+const brighten = (at: number) => {
+  for (const [i, li] of phases.entries())
+    li.style.setProperty(
+      "--near",
+      Math.max(0, 1 - Math.abs(at - i)).toFixed(2),
+    );
 };
-// It waits at the start until the first glyph is written.
-moveDot(0);
+const settle = (at: number) => {
+  cancelAnimationFrame(glide.frame);
+  Object.assign(glide, { at, to: at, v: 0, speed: 0, back: false, frame: 0 });
+  phaseDot.to(at);
+  phaseDot.mark.style.scale = "";
+  brighten(at);
+};
+const glideStep = (now: number) => {
+  const dt = Math.min(Math.max(now - glide.last, 0) / 1000, 1 / 30);
+  glide.last = now;
+  const was = glide.at;
+  if (glide.back) {
+    // Back up on a quick spring, to be at the start before it melts.
+    for (let i = 0; i < 4; i++) {
+      glide.v += (1400 * (glide.to - glide.at) - 70 * glide.v) * (dt / 4);
+      glide.at += glide.v * (dt / 4);
+    }
+    if (Math.abs(glide.to - glide.at) < 0.02) glide.back = false;
+  } else glide.at = glide.to;
+  const speed = dt > 0 ? Math.abs(glide.at - was) / dt : 0;
+  glide.speed += (speed - glide.speed) * 0.5;
+  if (!glide.back && glide.speed < 0.05) return settle(glide.at);
+  phaseDot.to(glide.at);
+  brighten(glide.at);
+  const i = Math.min(Math.floor(glide.at), END - 1);
+  const [ax, ay] = phaseDot.spot(i);
+  const [bx, by] = phaseDot.spot(i + 1);
+  const px = glide.speed * Math.hypot(bx - ax, by - ay);
+  const pull = 1 + Math.min(px / 600, 1.3);
+  const across = Math.max(0.72, 1 / Math.sqrt(pull));
+  phaseDot.mark.style.scale =
+    Math.abs(bx - ax) >= Math.abs(by - ay)
+      ? `${pull.toFixed(3)} ${across.toFixed(3)}`
+      : `${across.toFixed(3)} ${pull.toFixed(3)}`;
+  glide.frame = requestAnimationFrame(glideStep);
+};
 const showProgress = (t: number) => {
   const stops = stopsNow();
   const i = stops.findIndex((s) => t <= s);
@@ -54,13 +86,15 @@ const showProgress = (t: number) => {
   const span = stops[i] - stops[from];
   const at =
     i < 0 ? END : from + (i - from) * (span > 0 ? (t - stops[from]) / span : 1);
-  if (phaseDot.at === END && at < END && !reduced.matches)
-    phaseDot.mark.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: 240,
-      easing: "cubic-bezier(0.23, 1, 0.32, 1)",
-    });
-  moveDot(at);
+  if (reduced.matches) return settle(at);
+  if (at < glide.to - 0.5) glide.back = true;
+  glide.to = at;
+  if (glide.frame) return;
+  glide.last = performance.now();
+  glide.frame = requestAnimationFrame(glideStep);
 };
+// It waits at the start until the first glyph is written.
+settle(0);
 const note = $("phase-note");
 const explain = (name?: string) => {
   const b = holds.find((h) => h.dataset.hold === (name ?? root.dataset.held));
@@ -223,15 +257,19 @@ const arrange = createArrange({
   easing: "cubic-bezier(0.33, 1, 0.68, 1)",
 });
 // A letter or a shape turned is just itself on its side, so Type and Shapes
-// stand upright and the button has nothing to turn. The presets and phases sit
-// as they do across, except on a phone, where they stand in columns.
+// stand upright and the button has nothing to turn, with the presets and
+// phases in columns close beside them.
 const phone = matchMedia("(max-width: 699px)");
 // A phone is taller than it is wide, so words start up the page there.
 let turning = phone.matches;
 // `instant` for the page's first layout, before it inks in.
 const turnTo = (instant = false) => {
   const upright = !["words", "lines"].includes(SETS[set].id);
-  const columns = upright ? phone.matches : turning;
+  const columns = upright || turning;
+  const place = () => {
+    root.toggleAttribute("data-turn", columns);
+    root.toggleAttribute("data-upright", upright);
+  };
   turn.disabled = upright;
   turn.ariaPressed = String(turning && !upright);
   turn.ariaLabel = upright
@@ -242,12 +280,15 @@ const turnTo = (instant = false) => {
   if (instant) {
     const box = $("ink");
     box.style.transition = "none";
-    root.toggleAttribute("data-turn", columns);
+    place();
     box.getBoundingClientRect();
     box.style.transition = "";
-  } else if (columns !== root.hasAttribute("data-turn"))
+  } else if (
+    columns !== root.hasAttribute("data-turn") ||
+    upright !== root.hasAttribute("data-upright")
+  )
     arrange(
-      () => root.toggleAttribute("data-turn", columns),
+      place,
       // Back to a row, the phases hang under the glyph now, so they glide there.
       () => {
         depths.clear();
@@ -279,8 +320,14 @@ const step = (by: number, announce = false, replace = false) => {
   at = (at + by + keys.length) % keys.length;
   write(keys[at], announce, replace);
 };
+// Type has no order worth reading it in, so it writes in any, never the same
+// twice running; the arrows still step through it in order.
+const ahead = () =>
+  SETS[set].id === "type"
+    ? 1 + Math.floor(Math.random() * (SETS[set].keys.length - 1))
+    : 1;
 function next() {
-  step(1, false, true);
+  step(ahead(), false, true);
 }
 
 let quietUntil = 0;
@@ -408,7 +455,7 @@ for (const b of holds) {
 
 $("ink").addEventListener("click", () => {
   touched();
-  step(1, true);
+  step(ahead(), true);
 });
 for (const [i, b] of setButtons.entries())
   b.addEventListener("click", () => {

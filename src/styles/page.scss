@@ -536,15 +536,15 @@
     .rail ul {
       display: grid;
       grid-template-columns: max-content 1fr max-content;
-      grid-template-rows: repeat(3, auto);
+      grid-template-rows: repeat(4, auto);
       grid-auto-flow: column;
     }
 
-    li:nth-child(-n + 3) {
+    li:nth-child(-n + 4) {
       grid-column: 1;
     }
 
-    li:nth-child(n + 4) {
+    li:nth-child(n + 5) {
       grid-column: 3;
       justify-self: end;
 
@@ -714,6 +714,12 @@
 [data-turn] {
   .ink {
     top: var(--turn-y);
+  }
+
+  // Upright, a letter or a shape is wider than a glyph turned, so the
+  // columns stand off by half of most of them; a W reaches under their ends.
+  &[data-upright] {
+    --turn-reach: calc(0.42 * var(--glyph) + 18px);
   }
 
   @include side {
