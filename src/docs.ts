@@ -26,6 +26,10 @@ await pool.show("A"); // the first glyph just appears
 pool.show("B"); // A pools into B
 \`\`\`
 
+## Performance
+
+GPU work only while a glyph morphs on screen; nothing at rest. Every pool on a page shares one WebGL2 context (browsers cap contexts at about 16), so there's no limit on how many; a lost context is recovered, and pools keep their last frame meanwhile. Memory grows with area: about 1MB at icon size, 10MB for a 600×200 heading, 55MB full screen at 2×. A full-screen frame is about 2–3ms of GPU time on an M-series Mac, inside 90 and 120fps. Details in the full docs, under Performance.
+
 ## Docs
 
 - [Full docs](${SITE}/llms-full.txt): the README and the source of pool.ts in one file

@@ -159,9 +159,19 @@ The playground's presets make good starting points: Glass (the defaults), Backdr
 - The ink is the element's `color`, and the pool picks up changes to it, so dark mode needs no code.
 - With reduced motion, glyphs swap without the morph. Without WebGL2, each one shows at rest.
 - The canvas is hidden from screen readers, so label the element.
-- Every pool on a page draws through one shared WebGL2 context, so use as many as you like; browsers allow only about 16 contexts at once. If the browser takes it away, each pool keeps its last frame and shows new glyphs at rest until it's back.
-- It draws only while something moves and is on screen, and a morph cut short picks up the pool where it is.
+- A morph cut short picks up the pool where it is.
 - Agents can read [llms.txt](https://ink-pool.jsfowles.com/llms.txt), or [llms-full.txt](https://ink-pool.jsfowles.com/llms-full.txt) for this README and the source in one file.
+
+## Performance
+
+It runs on the GPU, but only while a glyph is morphing and on screen: a pool at rest, scrolled away or in a background tab does no work.
+
+- **No limit on how many.** Browsers allow only about 16 WebGL contexts at once (Chrome drops the least used past that), so every pool on a page draws through one shared WebGL2 context onto its own 2D canvas. If the browser takes that context away, each pool keeps its last frame and shows new glyphs at rest; if it doesn't come back within a second, a new context takes over.
+- **Cost grows with area, not count.** On a 2× screen a pool holds about 1MB of GPU memory at icon size, 10MB for a 600×200 heading and 55MB full screen (1440×900).
+- **Frames.** A full-screen morph takes about 2–3ms of GPU time a frame on an M-series Mac, well inside 90fps (11ms) and 120fps (8ms); a GPU several times slower should still hold 90fps. The first frame of a new glyph costs a little more, since that glyph is drawn then.
+- **How it stays light.** The blur runs on a smaller image, with two pixels per read. Glyphs are kept as alpha only, four at most. A glyph 96px or larger on a dense screen is drawn and blurred at half the pixels, and only the final cut, which makes the hard edge, runs at full resolution, so it shows as sharp.
+- **What to avoid.** Several full-screen pools morphing at once, or one morphing nonstop on a phone, where it costs battery like any animation that size.
+- `teardown()` frees what a pool held on the GPU, so mounting and unmounting is safe.
 
 > [!NOTE]
 > I've mostly tested it in Chrome. Safari and Firefox should be fine, but check.

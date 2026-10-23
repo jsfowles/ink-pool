@@ -5,9 +5,21 @@ import Ink from "../components/Ink.astro";
 import Ledger from "../components/Ledger.astro";
 import Presets from "../components/Presets.astro";
 import { SETS } from "../glyphs";
+import * as readme from "../../README.md";
+import { SITE } from "../docs";
 
 const description =
   "Ink pool: a glyph that melts into the next one. Both blur into one pool of ink, a threshold keeps its edge hard, and the next glyph firms up out of it. Tune it, then copy one file.";
+// The README without its picture header, with links that work from here.
+const docs = (await readme.compiledContent())
+  .replace(/^\s*<div align="center">[\s\S]*?<\/div>\s*/, "")
+  .replace(
+    /(href|src)="(src|media)\//g,
+    '$1="https://github.com/jsfowles/ink-pool/blob/main/$2/',
+  )
+  // Its headings' ids, kept apart from the page's own.
+  .replace(/id="/g, 'id="docs-')
+  .replace(/href="#/g, 'href="#docs-');
 const phases = [
   ["start", "The old glyph, just beginning to blur."],
   ["melting", "Both blur, and their ink runs together."],
@@ -48,6 +60,22 @@ const drops = [
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="alternate" type="text/plain" href="/llms.txt" title="Docs" />
     <meta name="description" content={description} />
+    <script
+      type="application/ld+json"
+      set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "SoftwareSourceCode",
+        name: "Ink Pool",
+        description,
+        url: SITE,
+        codeRepository: "https://github.com/jsfowles/ink-pool",
+        programmingLanguage: "TypeScript",
+        license: "https://opensource.org/licenses/MIT",
+        runtimePlatform: "Web browsers with WebGL2",
+        abstract:
+          "One TypeScript file, no dependencies. It works on the GPU only while a glyph morphs on screen. Every pool on a page shares one WebGL2 context, so there's no limit on how many (browsers cap contexts at about 16); a lost context is recovered. GPU memory grows with area: about 1MB at icon size, 10MB for a 600 by 200 heading, 55MB full screen at 2x. A full-screen frame is about 2 to 3ms of GPU time on an M-series Mac.",
+      })}
+    />
     <link
       rel="preload"
       href="/fonts/poppins-latin-700-normal.woff2"
@@ -83,9 +111,13 @@ const drops = [
       </p>
       <p class="sr-only" id="now" aria-live="polite"></p>
       <p class="sr-only">
-        To use it in your own project, copy <a href="/pool.ts">pool.ts</a>
-        and read <a href="/llms-full.txt">the docs</a>.
+        To use it in your own project, copy <a href="/pool.ts">pool.ts</a>. The
+        docs follow, and are also at
+        <a href="/llms-full.txt">llms-full.txt</a>.
       </p>
+      <!-- The README in the page itself, for screen readers and for anything
+           that reads the page without running it. -->
+      <article class="sr-only" id="docs" aria-label="Docs" set:html={docs} />
     </main>
 
     <header class="top">
