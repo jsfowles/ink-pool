@@ -193,7 +193,7 @@
 .ink-b {
   color: var(--tone, var(--tone-full));
   mix-blend-mode: var(--lift);
-  transition: color 150ms var(--ease-out);
+  transition: color var(--duration-hover) var(--ease-out);
 }
 
 // No z-index, transform or opacity on the edges: any would cut their Ink
@@ -303,6 +303,7 @@
 }
 
 .top-nav {
+  position: relative;
   display: flex;
   gap: 30px;
   white-space: nowrap;
@@ -391,68 +392,61 @@
   }
 }
 
-// The hover ring, where a list's dot would sit.
+// A phase's drops brighten by this on hover, eased like the hover ring.
+@property --hover {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+// What a list's items place their icons and hit areas against.
 .sets button,
 .top-nav :is(a, button),
 .presets button,
 .phases button {
   position: relative;
-
-  &::after {
-    @include dot;
-    content: "";
-    position: absolute;
-    background: none;
-    box-shadow: inset 0 0 0 1px #fff;
-    opacity: 0;
-    scale: 0.4;
-    transition:
-      opacity 150ms var(--ease-out),
-      scale 150ms var(--ease-out);
-    pointer-events: none;
-  }
 }
 
+// Room under a row's items for its dots.
 .sets button,
 .top-nav :is(a, button) {
   padding-bottom: 12px;
-
-  &::after {
-    left: 50%;
-    bottom: 0;
-    margin-left: -2.5px;
-  }
 }
 
-.presets button::after,
-.phases button::after {
-  top: 50%;
-  margin-top: -2.5px;
-}
+// The hover ring, one to a list, placed by inkHover where the list's dot
+// would sit: it inks in on the first item the pointer finds, glides from one
+// to the next, and fades as the pointer leaves the list.
+.hover-mark {
+  @include dot;
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: none;
+  box-shadow: inset 0 0 0 1px #fff;
+  opacity: 0;
+  scale: 0.4;
+  pointer-events: none;
+  transition-property: opacity, scale, translate;
+  transition-duration: var(--duration-hover);
+  transition-timing-function: var(--ease-out);
 
-.presets button::after {
-  left: -14px;
-}
-
-.phases button::after {
-  right: -14px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  :is(.sets, .presets) button:not([aria-pressed="true"]):hover::after,
-  .phases button:hover::after,
-  .top-nav a:hover::after,
-  .top-nav button:not([aria-expanded="true"]):hover::after {
+  &[data-on] {
     opacity: 1;
     scale: 1;
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    transition-property: opacity, scale;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
   :is(.top-nav, .sets, .presets, .phases) :is(a, button):hover {
     --tone: var(--tone-full);
   }
 
   .phases button:hover .drops {
-    opacity: 1;
+    --hover: 1;
   }
 }
 
@@ -630,13 +624,15 @@
     width: 56px;
     fill: #fff;
     mix-blend-mode: difference;
-    opacity: calc(0.42 + 0.58 * var(--near, 0));
+    // Brightened at once by the morph passing, which sets --near each
+    // frame, and at hover's pace by the pointer or a hold.
+    opacity: calc(0.42 + 0.58 * max(var(--near, 0), var(--hover)));
     will-change: transform;
-    transition: opacity 150ms var(--ease-out);
+    transition: --hover var(--duration-hover) var(--ease-out);
   }
 
   [aria-pressed="true"] .drops {
-    opacity: 1;
+    --hover: 1;
   }
 
   // Moved by `right`, not a transform, which would cut its blend.

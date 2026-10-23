@@ -149,7 +149,7 @@ Options: `draw`, `room`, `queue` (how many glyphs can wait, `3`; `0` cuts a morp
 | `opacity`   | `1`     | 0.02–1     | Overall opacity.                            |
 | `fadeStart` | `100`   | 0–100%     | Fades out downward from here. `100` is off. |
 | `fadeEnd`   | `100`   | 0–100%     | Gone by here.                               |
-| `breathe`   | `0`     | 0–6s       | A slow pulse at rest. `0` is off.           |
+| `breathe`   | `0`     | 0–6s       | Settles dimmer at rest over this long, and brightens as the next morph starts. `0` is off. |
 | `turn`      | `0`     | 0–1        | `1` runs it up the page.                    |
 
 The playground's presets make good starting points: Glass (the defaults), Backdrop (faint, for behind copy), Syrup, Drip, Crisp, Mercury and Smoke.
@@ -159,7 +159,8 @@ The playground's presets make good starting points: Glass (the defaults), Backdr
 - The ink is the element's `color`, and the pool picks up changes to it, so dark mode needs no code.
 - With reduced motion, glyphs swap without the morph. Without WebGL2, each one shows at rest.
 - The canvas is hidden from screen readers, so label the element.
-- It draws only while something moves, and a morph cut short picks up the pool where it is.
+- Every pool on a page draws through one shared WebGL2 context, so use as many as you like; browsers allow only about 16 contexts at once. If the browser takes it away, each pool keeps its last frame and shows new glyphs at rest until it's back.
+- It draws only while something moves and is on screen, and a morph cut short picks up the pool where it is.
 - Agents can read [llms.txt](https://ink-pool.jsfowles.com/llms.txt), or [llms-full.txt](https://ink-pool.jsfowles.com/llms-full.txt) for this README and the source in one file.
 
 > [!NOTE]

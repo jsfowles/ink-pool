@@ -6,6 +6,7 @@ import Ink from "./Ink.astro";
 <nav class="presets" aria-label="Presets">
   <div class="rail">
     <span class="preset-mark" id="preset-mark" aria-hidden="true"></span>
+    <span class="hover-mark" aria-hidden="true"></span>
     <ul>
       {Object.entries(PRESETS).map(([name, { note }], i) => (
         <li style={`--i: ${i}`}>

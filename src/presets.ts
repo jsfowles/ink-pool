@@ -6,14 +6,13 @@ export const PRESETS: Record<string, { note: string; settings: Settings }> = {
     settings: DEFAULTS,
   },
   Backdrop: {
-    note: "Half strength behind your copy, fading down, breathing",
+    note: "Half strength behind your copy, fading down",
     settings: {
       ...DEFAULTS,
       opacity: 0.5,
       rest: 0.008,
       fadeStart: 25,
       fadeEnd: 90,
-      breathe: 2.4,
     },
   },
   Syrup: {

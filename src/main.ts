@@ -2,7 +2,7 @@ import { paintFog } from "./fog";
 import { describe, draw, drawIcon, inkBottom, SETS } from "./glyphs";
 import { startLedger } from "./ledger";
 import { createArrange } from "./arrange";
-import { inkDot, inkSwap, inkText } from "./ink";
+import { inkDot, inkHover, inkSwap, inkText } from "./ink";
 import { inkPool, type Phase } from "./pool";
 import source from "./pool.ts?raw";
 
@@ -142,15 +142,9 @@ let touring = true;
 let tourStep = false;
 // How far the glyph is turned: 1 runs it up the page.
 let turned = 0;
-// Paused, the glyph holds its breath too.
-const breathing = ({ breathe }: { breathe: number }) =>
-  $<HTMLInputElement>("auto").checked ? breathe : 0;
 const ledger = startLedger((settings, { live, preset }) => {
   // A preset eases in; a slider follows the hand. Either keeps the turn.
-  pool.set(
-    { ...settings, turn: turned, breathe: breathing(settings) },
-    { ease: preset ? 600 : 0 },
-  );
+  pool.set({ ...settings, turn: turned }, { ease: preset ? 600 : 0 });
   if (!tourStep) touring = false;
   // Letting go of a slider or choosing a preset writes the next glyph. A
   // preset also lets go of a hold; a slider keeps it, to tune the held frame.
@@ -159,10 +153,7 @@ const ledger = startLedger((settings, { live, preset }) => {
   next();
   keepWriting();
 }, source);
-pool.set(
-  { ...ledger.settings(), breathe: breathing(ledger.settings()) },
-  { ease: 0 },
-);
+pool.set(ledger.settings(), { ease: 0 });
 
 let set = 0;
 let at = 0;
@@ -232,6 +223,12 @@ function hang(t = 1, key = last) {
     `${Math.round(from + (to - from) * k)}px`,
   );
 }
+
+// Each list's hover ring keeps to the item the pointer is on.
+for (const mark of document.querySelectorAll<HTMLElement>(".hover-mark"))
+  inkHover(mark, [
+    ...mark.parentElement!.querySelectorAll<HTMLElement>("button, a"),
+  ]);
 
 // The sets and presets dots keep to the pressed one.
 inkDot($("sets-mark"), setButtons, { follow: true });
@@ -409,7 +406,6 @@ const say = (text: string) => {
 };
 const showPause = (pressed = false) => {
   icon.show(auto.checked ? "pause" : "play");
-  pool.set({ breathe: breathing(ledger.settings()) });
   pause.ariaLabel = `${auto.checked ? "Pause" : "Play"} the writing`;
   if (!pressed) return;
   say(auto.checked ? "Writing" : "Paused");
@@ -457,22 +453,39 @@ $("ink").addEventListener("click", () => {
   touched();
   step(ahead(), true);
 });
+// A set takes over once the glyph on screen has settled, so one set never
+// melts into another mid-way; pressed, it shows as chosen at once. Held, the
+// glyph can't settle, so the set takes over now.
+let choosing = 0;
+const chooseSettled = (index: number, then = () => {}) => {
+  const run = ++choosing;
+  for (const [i, b] of setButtons.entries())
+    b.ariaPressed = String(i === index);
+  const go = () => {
+    if (run !== choosing) return;
+    choose(index);
+    then();
+  };
+  if (root.dataset.held) go();
+  else void settled.then(go);
+};
 for (const [i, b] of setButtons.entries())
   b.addEventListener("click", () => {
     quietUntil = 0;
-    choose(i);
-    at = 0;
-    write(SETS[i].keys[0], true, true);
-    keepWriting();
+    // The old set writes nothing more while the new one waits.
+    clearTimeout(timer);
+    writing++;
+    chooseSettled(i, () => {
+      at = 0;
+      write(SETS[i].keys[0], true, true);
+      keepWriting();
+    });
   });
 
 const writeChar = (char: string) => {
   const type = SETS.findIndex((s) => s.id === "type");
   const found = SETS[type].keys.indexOf(`text:${char.toUpperCase()}`);
-  if (found >= 0) {
-    choose(type);
-    at = found;
-  }
+  if (found >= 0) chooseSettled(type, () => (at = found));
   write(`text:${char}`, true);
 };
 

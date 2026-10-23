@@ -1,4 +1,5 @@
 const still = matchMedia("(prefers-reduced-motion: reduce)");
+const pointer = matchMedia("(hover: hover) and (pointer: fine)");
 
 export const RUN = 420;
 
@@ -141,4 +142,27 @@ export const inkDot = (
     show(false);
   }
   return dot;
+};
+
+/** A ring that keeps to the item the pointer is on, where the list's dot
+ *  would sit: it inks in on the first, glides along to the next as the
+ *  pointer moves, stays over the gaps between them, and fades as the pointer
+ *  leaves the list. */
+export const inkHover = (mark: HTMLElement, items: HTMLElement[]) => {
+  const dot = inkDot(mark, items);
+  const show = (i: number) => {
+    if (!pointer.matches) return;
+    if (mark.hasAttribute("data-on")) return dot.to(i);
+    // Inks in where it is, without gliding over from where it last was.
+    mark.style.transition = "opacity 150ms, scale 150ms";
+    dot.to(i);
+    void mark.offsetWidth;
+    mark.style.transition = "";
+    mark.toggleAttribute("data-on", true);
+  };
+  for (const [i, item] of items.entries())
+    item.addEventListener("pointerenter", () => show(i));
+  mark.parentElement!.addEventListener("pointerleave", () =>
+    mark.toggleAttribute("data-on", false),
+  );
 };

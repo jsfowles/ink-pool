@@ -25,7 +25,7 @@ export type Settings = {
   opacity: number;
   fadeStart: number; // %, 100 is off
   fadeEnd: number; // %
-  breathe: number; // s, 0 is off
+  breathe: number; // s to settle dimmer at rest, 0 is off
   turn: number; // 0 runs across, 1 up the page
 };
 
@@ -117,6 +117,7 @@ type Renderer = {
   resize: (layout: Layout) => void;
   render: (view: View, settings: Settings, ink: number[]) => number;
   clearGlyphs: () => void;
+  dispose: () => void;
 };
 
 // How long set() eases, in ms.
@@ -328,14 +329,15 @@ vec2 spun(mat2 spin, vec2 at, vec2 ink, vec2 offset) {
   return (spin * ((uv - 0.5) * frame - at + offset) + ink) / frame + 0.5;
 }
 void main() {
-  float a = texture(fromGlyph, spun(fromSpin, fromAt, fromInk, fromOffset)).a;
-  float b = texture(toGlyph, spun(toSpin, toAt, toInk, toOffset)).a;
+  float a = texture(fromGlyph, spun(fromSpin, fromAt, fromInk, fromOffset)).r;
+  float b = texture(toGlyph, spun(toSpin, toAt, toInk, toOffset)).r;
   a *= fromWeight;
   b *= toWeight;
   color = vec4(1.0 - (1.0 - a) * (1.0 - b));
 }`;
 
-// One direction of a Gaussian blur.
+// One direction of a Gaussian blur. Each read lands between two texels,
+// weighted so the texture's own filtering takes both: half the reads.
 const BLUR = `${HEADER}
 uniform sampler2D field;
 uniform vec2 uvScale, uvMax, direction;
@@ -345,14 +347,23 @@ void main() {
   vec2 here = uv * uvScale;
   float sum = density(here), total = 1.0, falloff = -0.5 / (sigma * sigma);
   int reach = int(ceil(sigma * 3.0));
-  for (int i = 1; i <= 48; i++) {
+  for (int i = 1; i <= 48; i += 2) {
     if (i > reach) break;
-    float weight = exp(float(i * i) * falloff);
-    vec2 shift = direction * float(i);
+    float near = exp(float(i * i) * falloff);
+    float far = i < reach ? exp(float((i + 1) * (i + 1)) * falloff) : 0.0;
+    float weight = near + far;
+    vec2 shift = direction * (float(i) + far / weight);
     sum += weight * (density(here + shift) + density(here - shift));
     total += 2.0 * weight;
   }
   color = vec4(sum / total);
+}`;
+
+// A glyph's picture down to the one channel it's read by.
+const ALPHA = `${HEADER}
+uniform sampler2D picture;
+void main() {
+  color = vec4(texture(picture, uv).a);
 }`;
 
 // A hard threshold, antialiased with fwidth, then the fade and opacity.
@@ -472,31 +483,122 @@ const drawTurned = (
   return drawGlyph(ctx, key, stage);
 };
 
-const createRenderer = (
-  gl: WebGL2RenderingContext,
-  drawGlyph: Draw,
-): Renderer => {
-  const createTexture = (minFilter: number = gl.LINEAR) => {
-    const texture = gl.createTexture()!;
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    return texture;
-  };
+// Every pool draws through one WebGL2 context, onto its own 2D canvas: a
+// browser keeps only so many contexts (Chrome about 16, losing the least
+// used), and a page may want more pools than that. A pool keeps its last
+// frame while the context is lost and shows new glyphs at rest; if the
+// browser doesn't give it back soon, a new context takes over.
+type Pass = ReturnType<typeof createPass>;
+type Shared = {
+  gl: WebGL2RenderingContext;
+  canvas: HTMLCanvasElement;
+  mix: Pass;
+  blur: Pass;
+  cut: Pass;
+  alpha: Pass;
+  empty: WebGLTexture;
+  halfFloat: boolean;
+};
+let shared: Shared | null | undefined;
+// What each pool does when a lost context comes back.
+const restorers = new Set<() => void>();
 
-  const createBlank = (w: number, h: number, half = false) => {
-    const texture = createTexture();
-    const [format, type] = half
+const createTexture = (
+  gl: WebGL2RenderingContext,
+  minFilter: number = gl.LINEAR,
+) => {
+  const texture = gl.createTexture()!;
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return texture;
+};
+
+const getShared = (): Shared | null => {
+  if (shared === undefined) {
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl2", {
+      premultipliedAlpha: true,
+      antialias: false,
+    });
+    if (!gl) return (shared = null);
+    const build = (): Shared => {
+      const triangle = new Float32Array([-1, -1, 3, -1, -1, 3]);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, triangle, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+      // No glyph: one clear pixel, read by its alpha like the rest.
+      const empty = createTexture(gl);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        1,
+        1,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        new Uint8Array(4),
+      );
+      return {
+        gl,
+        canvas,
+        mix: createPass(gl, MIX),
+        blur: createPass(gl, BLUR),
+        cut: createPass(gl, CUT),
+        alpha: createPass(gl, ALPHA),
+        empty,
+        // Half floats keep a hard edge from stepping, where the browser
+        // allows.
+        halfFloat: !!gl.getExtension("EXT_color_buffer_float"),
+      };
+    };
+    const restoreAll = () => {
+      for (const restore of restorers) restore();
+    };
+    canvas.addEventListener("webglcontextlost", (e) => {
+      e.preventDefault();
+      setTimeout(() => {
+        if (shared?.gl !== gl || !gl.isContextLost()) return;
+        shared = undefined;
+        restoreAll();
+      }, 1000);
+    });
+    canvas.addEventListener("webglcontextrestored", () => {
+      // Back after a new one took over, it gives its place up.
+      if (shared?.gl !== gl)
+        return gl.getExtension("WEBGL_lose_context")?.loseContext();
+      shared = build();
+      restoreAll();
+    });
+    shared = build();
+  }
+  return shared && !shared.gl.isContextLost() ? shared : null;
+};
+
+// One drawing canvas for every pool's glyphs, drawn one at a time.
+let scratch: HTMLCanvasElement | undefined;
+const NO_TURN: Turn = { middle: [0, 0], reach: [0, 0], grow: 1 };
+
+const createRenderer = (
+  out: CanvasRenderingContext2D,
+  drawGlyph: Draw,
+  redraw: () => void,
+): Renderer => {
+  const flat = createFlat(out, drawGlyph);
+  const glyphs = new Map<string, Glyph>();
+  let targets: { texture: WebGLTexture; framebuffer: WebGLFramebuffer }[] = [];
+  let layout: Layout;
+
+  const createTarget = ({ gl, halfFloat }: Shared, w: number, h: number) => {
+    const texture = createTexture(gl);
+    const [format, type] = halfFloat
       ? [gl.R16F, gl.HALF_FLOAT]
       : [gl.R8, gl.UNSIGNED_BYTE];
     gl.texImage2D(gl.TEXTURE_2D, 0, format, w, h, 0, gl.RED, type, null);
-    return texture;
-  };
-
-  const createTarget = (w: number, h: number) => {
-    const texture = createBlank(w, h, halfFloat);
     const framebuffer = gl.createFramebuffer()!;
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     gl.framebufferTexture2D(
@@ -509,56 +611,51 @@ const createRenderer = (
     return { texture, framebuffer };
   };
 
-  const mix = createPass(gl, MIX);
-  const blur = createPass(gl, BLUR);
-  const cut = createPass(gl, CUT);
-  const triangle = new Float32Array([-1, -1, 3, -1, -1, 3]);
-  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-  gl.bufferData(gl.ARRAY_BUFFER, triangle, gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-  // Half floats keep a hard edge from stepping, where the browser allows.
-  const halfFloat = !!gl.getExtension("EXT_color_buffer_float");
-  // No glyph: one clear pixel, read by its alpha like the rest.
-  const empty: Glyph = {
-    texture: createTexture(),
-    scale: null,
-    turn: { middle: [0, 0], reach: [0, 0], grow: 1 },
-  };
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA,
-    1,
-    1,
-    0,
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    new Uint8Array(4),
-  );
-
-  const glyphs = new Map<string, Glyph>();
-  const scratch = document.createElement("canvas");
-  let targets: ReturnType<typeof createTarget>[] = [];
-  let layout: Layout;
-
   const clearGlyphs = () => {
-    for (const { texture } of glyphs.values()) gl.deleteTexture(texture);
+    const gl = getShared()?.gl;
+    for (const { texture } of glyphs.values()) gl?.deleteTexture(texture);
     glyphs.clear();
   };
 
+  const clearTargets = () => {
+    const gl = getShared()?.gl;
+    for (const { texture, framebuffer } of targets) {
+      gl?.deleteTexture(texture);
+      gl?.deleteFramebuffer(framebuffer);
+    }
+    targets = [];
+  };
+
+  // A lost context took its textures with it; they're made again as needed.
+  const restore = () => {
+    glyphs.clear();
+    targets = [];
+    redraw();
+  };
+  restorers.add(restore);
+
   const resize = (next: Layout) => {
     layout = next;
-    for (const { texture, framebuffer } of targets) {
-      gl.deleteTexture(texture);
-      gl.deleteFramebuffer(framebuffer);
-    }
-    targets = [0, 1].map(() => createTarget(next.width, next.height));
+    flat.resize(next);
+    clearTargets();
     clearGlyphs();
   };
 
-  const getGlyph = (key: string, turned = false) => {
-    if (!key) return empty;
+  // A large glyph on a dense screen is drawn, mixed and blurred at half the
+  // device's pixels, then cut at all of them: the cut makes the hard edge, so
+  // it shows as sharp, for a quarter of the memory and the work.
+  const coarse = () => (layout.dpr >= 1.5 && layout.stage.size >= 96 ? 2 : 1);
+  const sized = () => {
+    const k = coarse();
+    return [Math.ceil(layout.width / k), Math.ceil(layout.height / k), k];
+  };
+
+  const getGlyph = (
+    { gl, empty, alpha }: Shared,
+    key: string,
+    turned = false,
+  ) => {
+    if (!key) return { texture: empty, scale: null, turn: NO_TURN };
     const id = turned ? `turned:${key}` : key;
     let glyph = glyphs.get(id);
     if (glyph) {
@@ -566,17 +663,21 @@ const createRenderer = (
       glyphs.set(id, glyph);
       return glyph;
     }
-    const { dpr, width, height, stage } = layout;
-    scratch.width = width;
-    scratch.height = height;
+    const { dpr, stage } = layout;
+    const [width, height, k] = sized();
+    scratch ??= document.createElement("canvas");
+    if (scratch.width !== width) scratch.width = width;
+    if (scratch.height !== height) scratch.height = height;
     const ctx = scratch.getContext("2d")!;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(dpr / k, 0, 0, dpr / k, 0, 0);
     ctx.clearRect(0, 0, stage.width, stage.height);
     const turn = measureTurn(drawGlyph, key, stage);
     const drawn = turned
       ? drawTurned(ctx, drawGlyph, key, stage, turn)
       : drawGlyph(ctx, key, stage);
-    const texture = createTexture(gl.LINEAR_MIPMAP_LINEAR);
+    // Uploaded whole, which browsers do fastest, then kept as its alpha
+    // alone: a quarter of the memory, and a quarter to read.
+    const picture = createTexture(gl);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
     gl.texImage2D(
@@ -587,24 +688,56 @@ const createRenderer = (
       gl.UNSIGNED_BYTE,
       scratch,
     );
+    const texture = createTexture(gl, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.R8,
+      width,
+      height,
+      0,
+      gl.RED,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
+    const framebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      texture,
+      0,
+    );
+    gl.viewport(0, 0, width, height);
+    alpha({ picture }, {});
+    gl.deleteFramebuffer(framebuffer);
+    gl.deleteTexture(picture);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.generateMipmap(gl.TEXTURE_2D);
     glyph = { texture, scale: drawn && drawn > 0 ? drawn : 1, turn };
     glyphs.set(id, glyph);
-    // Keep the eight most recent.
+    // Keep the four most recent: a morph's two, and the two turned.
     for (const [oldKey, old] of glyphs) {
-      if (glyphs.size <= 8) break;
+      if (glyphs.size <= 4) break;
       gl.deleteTexture(old.texture);
       glyphs.delete(oldKey);
     }
     return glyph;
   };
 
-  const render = (
-    { morph, current }: View,
-    settings: Settings,
-    ink: number[],
-  ) => {
+  const render = (view: View, settings: Settings, ink: number[]) => {
+    const pool = getShared();
+    if (!pool) return flat.render(view, settings, ink);
+    const { gl, canvas, mix, blur, cut } = pool;
+    const { morph, current } = view;
     const { dpr, width, height, stage } = layout;
+    // The shared canvas grows to the largest pool and draws each in its
+    // corner; sized first, since sizing clears it.
+    if (canvas.width < width) canvas.width = width;
+    if (canvas.height < height) canvas.height = height;
+    const [tw, th, k] = sized();
+    if (!targets.length) targets = [0, 1].map(() => createTarget(pool, tw, th));
     const t = morph ? morph.progress : 1;
     // Turning, a glyph's picture across turns about the middle of its ink,
     // which moves to the middle of the box, and grows as the box lets it. Past
@@ -613,8 +746,8 @@ const createRenderer = (
     const turned = turn >= 0.5;
     const toKey = morph ? morph.to : current;
     const fromKey = morph ? morph.from : "";
-    const to = getGlyph(toKey, turned);
-    const from = getGlyph(fromKey, turned);
+    const to = getGlyph(pool, toKey, turned);
+    const from = getGlyph(pool, fromKey, turned);
     const blend = morph ? smoothstep(0.28, 0.72, t) : 1;
 
     // How a glyph shows: turned and scaled, as a matrix from the canvas to its
@@ -660,12 +793,14 @@ const createRenderer = (
       ? ((1 - easeOut(t)) * settings.rise * toUnit * dpr) / 100
       : 0;
 
-    // The mix and blur run on a smaller image, so a wide blur stays cheap.
-    const shrink = clamp(Math.floor(sigma / 4), 1, 32);
+    // The mix and blur run on a smaller image, so a wide blur stays cheap:
+    // as small as keeps the blur two of its pixels wide, which still reads
+    // as smooth once the cut draws it out at full size.
+    const shrink = Math.max(k, clamp(Math.floor(sigma / 2), 1, 64));
     const w = Math.ceil(width / shrink);
     const h = Math.ceil(height / shrink);
-    const uvScale = [w / width, h / height];
-    const uvMax = [(w - 0.5) / width, (h - 0.5) / height];
+    const uvScale = [w / tw, h / th];
+    const uvMax = [(w - 0.5) / tw, (h - 0.5) / th];
 
     // 1. Mix the two glyphs.
     gl.bindFramebuffer(gl.FRAMEBUFFER, targets[0].framebuffer);
@@ -693,22 +828,21 @@ const createRenderer = (
       gl.bindFramebuffer(gl.FRAMEBUFFER, targets[1].framebuffer);
       blur(
         { field: targets[0].texture },
-        { uvScale, uvMax, sigma: s, direction: [1 / width, 0] },
+        { uvScale, uvMax, sigma: s, direction: [1 / tw, 0] },
       );
       gl.bindFramebuffer(gl.FRAMEBUFFER, targets[0].framebuffer);
       blur(
         { field: targets[1].texture },
-        { uvScale, uvMax, sigma: s, direction: [0, 1 / height] },
+        { uvScale, uvMax, sigma: s, direction: [0, 1 / th] },
       );
     }
 
-    // 3. Cut at the threshold, onto the canvas.
+    // 3. Cut at the threshold, then onto the pool's own canvas. The cut
+    // writes every pixel it covers, so there's nothing to clear.
     const { hardness, threshold, opacity, fadeStart, fadeEnd } = settings;
     const fade = fadeStart < 100;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, width, height);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
     cut(
       { field: targets[0].texture },
       {
@@ -722,10 +856,31 @@ const createRenderer = (
         fadeEnd: fade ? fadeEnd / 100 : 3,
       },
     );
+    out.save();
+    out.setTransform(1, 0, 0, 1, 0, 0);
+    out.globalCompositeOperation = "copy";
+    out.drawImage(
+      canvas,
+      0,
+      canvas.height - height,
+      width,
+      height,
+      0,
+      0,
+      width,
+      height,
+    );
+    out.restore();
     return size / dpr / stage.size;
   };
 
-  return { resize, render, clearGlyphs };
+  const dispose = () => {
+    clearTargets();
+    clearGlyphs();
+    restorers.delete(restore);
+  };
+
+  return { resize, render, clearGlyphs, dispose };
 };
 
 // Without WebGL2, a 2D canvas shows each glyph at rest.
@@ -749,6 +904,7 @@ const createFlat = (
       );
     },
     clearGlyphs: () => {},
+    dispose: () => {},
   };
 };
 
@@ -943,13 +1099,9 @@ export const inkPool = (
     root.style.position = "relative";
   root.append(canvas);
 
-  const gl = canvas.getContext("webgl2", {
-    premultipliedAlpha: true,
-    antialias: false,
-  });
-  let renderer = gl
-    ? createRenderer(gl, draw)
-    : createFlat(canvas.getContext("2d")!, draw);
+  const renderer = createRenderer(canvas.getContext("2d")!, draw, () =>
+    paint(),
+  );
 
   let phase: Phase = "settled";
   let breath: Animation | undefined;
@@ -1001,7 +1153,11 @@ export const inkPool = (
     if (next !== filter) canvas.style.filter = filter = next;
   };
 
-  const render = () => soften(renderer.render(timeline.view(), settings, ink));
+  // Drawn only while it shows; scrolled back, it draws where it's got to.
+  let seen = true;
+  const render = () => {
+    if (seen) soften(renderer.render(timeline.view(), settings, ink));
+  };
 
   // Drawn already while a morph runs; otherwise now.
   const paint = () => {
@@ -1012,7 +1168,12 @@ export const inkPool = (
     const { morph } = timeline.view();
     const t = morph ? morph.progress : 1;
     const next = morph ? phaseAt(t, phasesFor(target)) : "settled";
-    if (next !== phase) onPhase?.((phase = next));
+    if (next !== phase) {
+      const crossed = (next === "settled") !== (phase === "settled");
+      phase = next;
+      onPhase?.(next);
+      if (crossed) breathe();
+    }
     onProgress?.(t);
   };
 
@@ -1036,30 +1197,26 @@ export const inkPool = (
     render();
   };
 
+  // With breathe on, a settled glyph breathes out, easing down to a dimmer
+  // rest over that long and staying there; the next morph breathes it back
+  // in as it starts to melt.
   const breathe = () => {
-    const ms = target.breathe * 1000;
-    const on = ms > 0 && !reducedMotion.matches;
-    const timing = breath?.effect?.getComputedTiming();
-    if (on && breath && timing) {
-      // A new pace keeps its place in the breath.
-      const at = (timing.progress ?? 0) + (timing.currentIteration ?? 0);
-      breath.effect!.updateTiming({ duration: ms });
-      breath.currentTime = at * ms;
-    } else if (on) {
-      const easing = "cubic-bezier(0.37, 0, 0.63, 1)";
-      breath = canvas.animate(
-        [{ opacity: 1, easing }, { opacity: 0.4, easing }, { opacity: 1 }],
-        { duration: ms, iterations: Infinity },
-      );
-    } else if (breath) {
-      const opacity = getComputedStyle(canvas).opacity;
-      breath.cancel();
-      breath = undefined;
-      canvas.animate([{ opacity }, { opacity: 1 }], {
-        duration: 400,
-        easing: "cubic-bezier(0.23, 1, 0.32, 1)",
-      });
-    }
+    const out = target.breathe > 0 && !reducedMotion.matches;
+    const resting = out && phase === "settled";
+    if (!breath && !resting) return;
+    const opacity = getComputedStyle(canvas).opacity;
+    breath?.cancel();
+    breath = canvas.animate([{ opacity }, { opacity: resting ? 0.4 : 1 }], {
+      duration: resting
+        ? target.breathe * 1000
+        : out
+          ? Math.min(400, target.duration * 0.35)
+          : 400,
+      easing: resting
+        ? "cubic-bezier(0.37, 0, 0.63, 1)"
+        : "cubic-bezier(0.23, 1, 0.32, 1)",
+      fill: "forwards",
+    });
   };
 
   const set = (next: Partial<Settings>, { ease = EASE } = {}) => {
@@ -1096,6 +1253,11 @@ export const inkPool = (
   resize();
   const observer = new ResizeObserver(resize);
   observer.observe(root);
+  const sight = new IntersectionObserver(([entry]) => {
+    seen = entry.isIntersecting;
+    if (seen) paint();
+  });
+  sight.observe(root);
 
   // Glyphs drawn before their font loaded get drawn again.
   const refont = () => {
@@ -1117,13 +1279,6 @@ export const inkPool = (
   };
   reducedMotion.addEventListener("change", onReduced);
 
-  canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
-  canvas.addEventListener("webglcontextrestored", () => {
-    renderer = createRenderer(gl!, draw);
-    renderer.resize(layout);
-    render();
-  });
-
   return {
     show: (glyph, { replace = false } = {}) => {
       measureRoom();
@@ -1143,6 +1298,8 @@ export const inkPool = (
       timeline.clear();
       breath?.cancel();
       observer.disconnect();
+      sight.disconnect();
+      renderer.dispose();
       document.fonts.removeEventListener("loadingdone", refont);
       reducedMotion.removeEventListener("change", onReduced);
       canvas.remove();
