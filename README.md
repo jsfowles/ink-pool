@@ -172,7 +172,11 @@ npm install
 npm run dev
 ```
 
-An Astro page around `src/pool.ts`. Press any key to write it, or <kbd>←</kbd> <kbd>→</kbd> to step through a set. `npm run check` typechecks and formats; `npm test` runs the morph timeline on a fake clock.
+An Astro page around `src/pool.ts`. Pick a set (Words, Lines, Type or Shapes), then press any key to write it, <kbd>←</kbd> <kbd>→</kbd> to step through the set, or click the glyph for another. The turn button runs words and lines up the page.
+
+Beside the glyph, the presets change the feel, and the phases show where each morph is as its dot runs down them. Click one to hold the morph there. **Settings** has every value, with **Copy settings** and **Copy pool.ts**.
+
+`npm run check` typechecks and formats; `npm test` runs the morph timeline on a fake clock.
 
 ## License
 

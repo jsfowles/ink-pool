@@ -34,7 +34,7 @@ pool.show("B"); // A pools into B
 
 ## Optional
 
-- [Playground](${SITE}): tune the settings, then copy them and the file
+- [Playground](${SITE}): start from a preset (Glass, Backdrop, Syrup, Drip, Crisp, Mercury or Smoke), tune the settings, then copy them and the file
 `;
 
 // The README without its picture header and folds, with links that work
